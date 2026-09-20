@@ -77,6 +77,7 @@
         selectCallMemberList: document.getElementById('selectCallMemberList'),
         groupCallAllBtn: document.getElementById('groupCallAllBtn'),
         closeSelectCallBtn: document.getElementById('closeSelectCallBtn'),
+        callDurationVal: document.getElementById('callDurationVal'),
         telemetryChart: document.getElementById('telemetryChart'),
         logMessage: document.getElementById('logMessage')
     };
@@ -91,6 +92,7 @@
     let activeWhisperTargetId = null;
     let isMuted = false;
     let currentCallState = 'IDLE';
+    let callStartTime = null;
 
     // QUIC / WebTransport & Telemetry State
     let webTransport = null;
@@ -1127,6 +1129,9 @@
 
     function setCallState(state) {
         currentCallState = state;
+        if (state === 'VOICE_ACTIVE' && !callStartTime) {
+            callStartTime = Date.now();
+        }
         if (state === 'IDLE' || state === 'IN_ROOM') {
             if (elements.mainScreen) {
                 elements.mainScreen.classList.add('active');
@@ -1185,6 +1190,7 @@
         activeCallId = null;
         activePeerId = null;
         activeWhisperTargetId = null;
+        callStartTime = null;
         isMuted = false;
 
         // Reset browser hardware mic tracks
@@ -1434,7 +1440,7 @@
         try {
             const ctx = getAudioContext();
             const micSource = ctx.createMediaStreamSource(mediaStream);
-            micProcessorNode = ctx.createScriptProcessor(2048, 1, 1);
+            micProcessorNode = ctx.createScriptProcessor(1024, 1, 1);
             setupAudioAnalyser(micSource);
 
             micProcessorNode.onaudioprocess = (e) => {
@@ -1605,9 +1611,14 @@
             const currentTime = ctx.currentTime;
             let senderPlayTime = peerPlayTimes[senderId] || 0;
 
-            if (senderPlayTime < currentTime) {
-                senderPlayTime = currentTime + 0.01;
+            // Micro-adaptive playout alignment for continuous 1+ minute long streaming
+            if (senderPlayTime < currentTime || senderPlayTime > currentTime + 0.15) {
+                senderPlayTime = currentTime + 0.02;
+            } else if (senderPlayTime > currentTime + 0.08) {
+                // Micro-pull playout time forward to prevent clock drift buildup over minutes
+                senderPlayTime -= 0.001;
             }
+
             source.start(senderPlayTime);
             peerPlayTimes[senderId] = senderPlayTime + buffer.duration;
         } catch (e) {
@@ -1622,6 +1633,26 @@
             if (currentCallState !== 'VOICE_ACTIVE') {
                 clearInterval(telemetryTimer);
                 return;
+            }
+
+            // AudioContext Auto-Resume & Keepalive for continuous long speech
+            if (audioCtx && audioCtx.state === 'suspended') {
+                audioCtx.resume().catch(e => {});
+            }
+
+            // Send PING keepalive to prevent socket timeouts on 1+ minute streams
+            sendSignal({ type: 'PING' });
+
+            if (callStartTime) {
+                const elapsedSec = Math.floor((Date.now() - callStartTime) / 1000);
+                const hrs = Math.floor(elapsedSec / 3600);
+                const mins = Math.floor((elapsedSec % 3600) / 60);
+                const secs = elapsedSec % 60;
+                const timeStr = `${hrs > 0 ? hrs + ':' : ''}${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+                const durationEl = document.getElementById('callDurationVal') || elements.callDurationVal;
+                if (durationEl) {
+                    durationEl.textContent = `${timeStr} (Unlimited 24/7)`;
+                }
             }
 
             if (elements.rttVal) elements.rttVal.textContent = `${rttMs} ms`;

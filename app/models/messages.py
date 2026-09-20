@@ -20,6 +20,8 @@ class MessageType(str, enum.Enum):
     CHAT_MESSAGE = "CHAT_MESSAGE"
     EMOJI_REACTION = "EMOJI_REACTION"
     CONGESTION_TELEMETRY = "CONGESTION_TELEMETRY"
+    PING = "PING"
+    PONG = "PONG"
     ERROR = "ERROR"
 
 class CallState(str, enum.Enum):

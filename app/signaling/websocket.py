@@ -174,6 +174,8 @@ class ConnectionManager:
             await self._handle_chat_message(client_id, msg.room_id, msg.text)
         elif msg_type == MessageType.EMOJI_REACTION:
             await self._handle_emoji_reaction(client_id, msg.room_id, msg.emoji)
+        elif msg_type == MessageType.PING:
+            await self._send_to(client_id, SignalMessage(type=MessageType.PONG))
 
     async def handle_binary_media(self, sender_id: str, raw_data: bytes):
         from app.audio.packet import VoicePacket
