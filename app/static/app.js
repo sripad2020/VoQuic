@@ -264,15 +264,52 @@
                 clearInterval(pingInterval);
                 pingInterval = null;
             }
-            updateWsStatus(false, 'Disconnected');
-            updateLog('Signaling connection lost. Retrying in 2s...');
-            setTimeout(initWebSocket, 2000);
+            startHttpPollingSignaling();
         };
 
         ws.onerror = (err) => {
             console.error('WebSocket error:', err);
-            updateWsStatus(false, 'Error');
+            startHttpPollingSignaling();
         };
+    }
+
+    async function startHttpPollingSignaling() {
+        if (httpPollingActive) return;
+        httpPollingActive = true;
+        updateLog('WebSocket unavailable (Vercel Serverless mode). Switched to HTTP Polling signaling!');
+        updateWsStatus(true, 'Connected (Vercel Serverless)');
+
+        try {
+            const res = await fetch('/api/register', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ client_id: myId })
+            });
+            const data = await res.json();
+            if (data.client_id) {
+                myId = data.client_id;
+                if (elements.myClientId) elements.myClientId.textContent = myId;
+            }
+            if (Array.isArray(data.signals)) {
+                data.signals.forEach(s => handleSignalMessage(s));
+            }
+        } catch (e) {
+            console.warn('HTTP register error:', e);
+        }
+
+        if (pollTimer) clearInterval(pollTimer);
+        pollTimer = setInterval(async () => {
+            if (!myId) return;
+            try {
+                const res = await fetch(`/api/poll?client_id=${encodeURIComponent(myId)}`);
+                const data = await res.json();
+                if (Array.isArray(data.signals)) {
+                    data.signals.forEach(s => handleSignalMessage(s));
+                }
+            } catch (e) {
+                console.warn('HTTP poll error:', e);
+            }
+        }, 1200);
     }
 
     function updateWsStatus(connected, text) {
@@ -466,6 +503,43 @@
                 const quicHost = msg.quic_host || window.location.hostname;
                 const quicPort = msg.quic_port || 4433;
                 setupQuicVoiceMedia(quicHost, quicPort, msg.cert_hash);
+                // Also initialize WebRTC P2P for serverless Vercel fallback
+                if (httpPollingActive || !('WebTransport' in window)) {
+                    const peerTarget = (msg.client_id === myId) ? msg.target_id : msg.client_id;
+                    if (peerTarget && peerTarget !== myId) {
+                        setupWebRtcP2pCall(peerTarget, msg.client_id === myId);
+                    }
+                }
+                break;
+
+            case 'WEBRTC_OFFER':
+                if (msg.client_id && msg.sdp) {
+                    activePeerId = msg.client_id;
+                    setupWebRtcP2pCall(msg.client_id, false).then(async () => {
+                        if (peerConnection) {
+                            await peerConnection.setRemoteDescription(new RTCSessionDescription(msg.sdp));
+                            const answer = await peerConnection.createAnswer();
+                            await peerConnection.setLocalDescription(answer);
+                            sendSignal({
+                                type: 'WEBRTC_ANSWER',
+                                target_id: msg.client_id,
+                                sdp: answer
+                            });
+                        }
+                    });
+                }
+                break;
+
+            case 'WEBRTC_ANSWER':
+                if (peerConnection && msg.sdp) {
+                    peerConnection.setRemoteDescription(new RTCSessionDescription(msg.sdp)).catch(e => console.error('WebRTC answer SDP error:', e));
+                }
+                break;
+
+            case 'WEBRTC_ICE':
+                if (peerConnection && msg.candidate) {
+                    peerConnection.addIceCandidate(new RTCIceCandidate(msg.candidate)).catch(e => console.error('WebRTC ICE error:', e));
+                }
                 break;
 
             case 'CALL_CONNECTED':
@@ -1145,11 +1219,24 @@
         }
     });
 
-    function sendSignal(obj) {
+    async function sendSignal(obj) {
         if (ws && ws.readyState === WebSocket.OPEN) {
             ws.send(JSON.stringify(obj));
+        } else if (httpPollingActive) {
+            try {
+                const res = await fetch('/api/signal', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ client_id: myId, signal: obj })
+                });
+                const data = await res.json();
+                if (Array.isArray(data.signals)) {
+                    data.signals.forEach(s => handleSignalMessage(s));
+                }
+            } catch (e) {
+                console.warn('HTTP sendSignal error:', e);
+            }
         } else {
-            updateLog('Reconnecting to signaling server... Action queued');
             pendingSignalQueue.push(obj);
             if (!ws || ws.readyState === WebSocket.CLOSED) {
                 initWebSocket();
@@ -1241,10 +1328,80 @@
         if (elements.incomingCallModal) elements.incomingCallModal.classList.add('hidden');
         if (elements.selectCallModal) elements.selectCallModal.classList.add('hidden');
 
+        if (peerConnection) {
+            try { peerConnection.close(); } catch(e){}
+            peerConnection = null;
+        }
+
         stopQuicVoiceMedia();
         setCallState(currentRoomId ? 'IN_ROOM' : 'IDLE');
         renderCallParticipants();
         updateLog('Call ended. Returned to room dashboard.');
+    }
+
+    let peerConnection = null;
+
+    async function setupWebRtcP2pCall(targetPeerId, isCaller) {
+        updateLog(`Initializing WebRTC P2P voice connection to ${targetPeerId}...`);
+        if (elements.quicStateVal) elements.quicStateVal.textContent = 'CONNECTED (WebRTC P2P Direct)';
+
+        const configuration = {
+            iceServers: [
+                { urls: 'stun:stun.l.google.com:19302' },
+                { urls: 'stun:stun1.l.google.com:19302' }
+            ]
+        };
+
+        try {
+            if (peerConnection) {
+                try { peerConnection.close(); } catch(e){}
+            }
+            peerConnection = new RTCPeerConnection(configuration);
+
+            if (!mediaStream) {
+                mediaStream = await getMicrophoneStreamSafe();
+            }
+
+            if (mediaStream) {
+                mediaStream.getTracks().forEach(track => {
+                    peerConnection.addTrack(track, mediaStream);
+                });
+            }
+
+            peerConnection.ontrack = (event) => {
+                updateLog(`Received WebRTC P2P audio stream from ${targetPeerId}!`);
+                let remoteAudio = document.getElementById('remoteWebRtcAudio');
+                if (!remoteAudio) {
+                    remoteAudio = document.createElement('audio');
+                    remoteAudio.id = 'remoteWebRtcAudio';
+                    remoteAudio.autoplay = true;
+                    document.body.appendChild(remoteAudio);
+                }
+                remoteAudio.srcObject = event.streams[0];
+            };
+
+            peerConnection.onicecandidate = (event) => {
+                if (event.candidate) {
+                    sendSignal({
+                        type: 'WEBRTC_ICE',
+                        target_id: targetPeerId,
+                        candidate: event.candidate
+                    });
+                }
+            };
+
+            if (isCaller) {
+                const offer = await peerConnection.createOffer();
+                await peerConnection.setLocalDescription(offer);
+                sendSignal({
+                    type: 'WEBRTC_OFFER',
+                    target_id: targetPeerId,
+                    sdp: offer
+                });
+            }
+        } catch (e) {
+            console.error('WebRTC P2P setup error:', e);
+        }
     }
 
     // QUIC DATAGRAM Media Transport Engine

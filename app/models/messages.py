@@ -22,6 +22,9 @@ class MessageType(str, enum.Enum):
     CONGESTION_TELEMETRY = "CONGESTION_TELEMETRY"
     PING = "PING"
     PONG = "PONG"
+    WEBRTC_OFFER = "WEBRTC_OFFER"
+    WEBRTC_ANSWER = "WEBRTC_ANSWER"
+    WEBRTC_ICE = "WEBRTC_ICE"
     ERROR = "ERROR"
 
 class CallState(str, enum.Enum):

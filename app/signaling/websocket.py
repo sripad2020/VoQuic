@@ -16,6 +16,7 @@ class ConnectionManager:
         self.rooms: Dict[str, set] = {}
         # call_id -> { "caller_id": str, "target_id": str, "state": CallState }
         self.active_calls: Dict[str, Dict[str, Any]] = {}
+        self.signal_queues: Dict[str, list] = {}
         self.quic_host: str = "0.0.0.0"
         self.quic_port: int = 4433
         self.cert_hash: str = ""
@@ -100,19 +101,11 @@ class ConnectionManager:
             for c_id, c_data in self.clients.items()
         ]
         
-        room_list = [
-            RoomInfo(
-                id=r_id,
-                member_count=len(members),
-                members=list(members)
-            )
-            for r_id, members in self.rooms.items()
-        ]
-
+        # Keep rooms private: Do not broadcast room lists publicly to unjoined devices
         msg = SignalMessage(
             type=MessageType.CLIENT_LIST,
             clients=client_list,
-            rooms=room_list
+            rooms=[]
         )
         payload = msg.model_dump_json()
         
@@ -183,6 +176,10 @@ class ConnectionManager:
             await self._handle_chat_message(client_id, msg.room_id, msg.text)
         elif msg_type == MessageType.EMOJI_REACTION:
             await self._handle_emoji_reaction(client_id, msg.room_id, msg.emoji)
+        elif msg_type in (MessageType.WEBRTC_OFFER, MessageType.WEBRTC_ANSWER, MessageType.WEBRTC_ICE):
+            if msg.target_id:
+                msg.client_id = client_id
+                await self._send_to(msg.target_id, msg)
         elif msg_type == MessageType.PING:
             await self._send_to(client_id, SignalMessage(type=MessageType.PONG))
 
@@ -528,9 +525,61 @@ class ConnectionManager:
 
     async def _send_to(self, client_id: str, message: SignalMessage):
         if client_id in self.clients:
-            try:
-                await self.clients[client_id]["websocket"].send_text(message.model_dump_json())
-            except Exception as e:
-                logger.error(f"Error sending message to {client_id}: {e}")
+            c_data = self.clients[client_id]
+            ws = c_data.get("websocket")
+            if ws:
+                try:
+                    await ws.send_text(message.model_dump_json())
+                except Exception as e:
+                    logger.error(f"Error sending message to {client_id}: {e}")
+
+        # Enqueue for HTTP polling (Vercel serverless mode)
+        if client_id not in self.signal_queues:
+            self.signal_queues[client_id] = []
+        self.signal_queues[client_id].append(message.model_dump())
+
+    def register_polling_client(self, requested_id: Optional[str] = None) -> str:
+        if requested_id and requested_id in self.clients:
+            client_id = requested_id
+        elif requested_id:
+            client_id = requested_id
+            self.clients[client_id] = {
+                "websocket": None,
+                "status": CallState.IDLE,
+                "room_id": None,
+                "call_id": None
+            }
+        else:
+            idx = 1
+            client_id = f"CLIENT-{chr(64 + len(self.clients) + 1)}" if len(self.clients) < 26 else f"CLIENT-{len(self.clients) + 1}"
+            while client_id in self.clients:
+                idx += 1
+                client_id = f"CLIENT-{idx}"
+            self.clients[client_id] = {
+                "websocket": None,
+                "status": CallState.IDLE,
+                "room_id": None,
+                "call_id": None
+            }
+        
+        if client_id not in self.signal_queues:
+            self.signal_queues[client_id] = []
+        
+        reg_msg = SignalMessage(
+            type=MessageType.REGISTER,
+            client_id=client_id,
+            quic_host=self.quic_host,
+            quic_port=self.quic_port,
+            cert_hash=self.cert_hash
+        )
+        self.signal_queues[client_id].append(reg_msg.model_dump())
+        return client_id
+
+    def pop_signals(self, client_id: str) -> list:
+        if client_id not in self.signal_queues:
+            return []
+        signals = self.signal_queues[client_id]
+        self.signal_queues[client_id] = []
+        return signals
 
 manager = ConnectionManager()

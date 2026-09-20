@@ -771,3 +771,98 @@ body {
     from { opacity: 0; transform: translateY(-4px); }
     to { opacity: 1; transform: translateY(0); }
 }
+
+/* Mobile Responsive UI Optimization */
+@media (max-width: 640px) {
+    body {
+        padding: 0;
+        align-items: stretch;
+    }
+
+    .app-container {
+        max-width: 100%;
+        min-height: 100vh;
+        border-radius: 0;
+        border: none;
+    }
+
+    .app-header {
+        padding: 12px 16px;
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+
+    .logo {
+        font-size: 1.1rem;
+    }
+
+    .server-badge {
+        font-size: 0.75rem;
+    }
+
+    .screen {
+        padding: 14px 16px;
+        gap: 14px;
+    }
+
+    .card {
+        padding: 14px;
+        border-radius: 10px;
+    }
+
+    .call-controls {
+        gap: 10px;
+    }
+
+    .call-controls .btn {
+        padding: 16px 12px;
+        font-size: 0.95rem;
+        min-height: 52px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+    }
+
+    .telemetry-grid {
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+    }
+
+    .tele-val {
+        font-size: 0.85rem;
+    }
+
+    .emoji-bar {
+        gap: 8px;
+        overflow-x: auto;
+        padding: 8px 4px;
+    }
+
+    .emoji-btn {
+        min-width: 44px;
+        min-height: 44px;
+        font-size: 1.5rem;
+    }
+
+    .chat-messages {
+        height: 120px;
+    }
+
+    .member-item {
+        padding: 10px 12px;
+        flex-direction: row;
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+
+    .participant-card {
+        min-width: 110px;
+        padding: 6px 10px;
+    }
+
+    .modal-card {
+        width: 94%;
+        padding: 20px 16px;
+    }
+}

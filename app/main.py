@@ -88,6 +88,38 @@ async def health_check():
         "relayed_bytes": voice_relay.total_relayed_bytes
     }
 
+from fastapi import Request
+
+@app.post("/api/register")
+async def register_endpoint(request: Request):
+    try:
+        data = await request.json()
+    except Exception:
+        data = {}
+    req_id = data.get("client_id")
+    client_id = manager.register_polling_client(req_id)
+    signals = manager.pop_signals(client_id)
+    return {"status": "ok", "client_id": client_id, "signals": signals}
+
+@app.post("/api/signal")
+async def signal_endpoint(request: Request):
+    try:
+        data = await request.json()
+    except Exception:
+        data = {}
+    client_id = data.get("client_id")
+    signal_payload = data.get("signal")
+    if client_id and signal_payload:
+        import json
+        await manager.handle_message(client_id, json.dumps(signal_payload))
+    signals = manager.pop_signals(client_id) if client_id else []
+    return {"status": "ok", "signals": signals}
+
+@app.get("/api/poll")
+async def poll_endpoint(client_id: str):
+    signals = manager.pop_signals(client_id)
+    return {"status": "ok", "signals": signals}
+
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket, client_id: str = None):
     connected_id = await manager.connect(websocket, requested_id=client_id)
