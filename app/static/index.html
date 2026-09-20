@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pulse Relay — Room Voice-over-QUIC</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Header -->
+        <header class="app-header">
+            <div class="logo">
+                <span class="logo-icon">⚡</span> PULSE RELAY
+            </div>
+            <div class="server-badge">
+                <button id="settingsBtn" class="btn btn-secondary" style="padding: 4px 10px; font-size: 0.8rem; margin-right: 6px;">⚙️ SETTINGS</button>
+                <span class="badge-label">Server:</span>
+                <span id="serverHostDisplay">Connecting...</span>
+            </div>
+        </header>
+
+        <!-- Main Screen (IDLE / ROOM SELECTION) -->
+        <main id="mainScreen" class="screen active">
+            <!-- Device Info Card -->
+            <div class="card device-card">
+                <div class="card-row">
+                    <span class="label">Your Device ID:</span>
+                    <span id="myClientId" class="client-id-badge">CLIENT-A</span>
+                </div>
+                <div class="card-row">
+                    <span class="label">Signaling State:</span>
+                    <span id="wsStatus" class="status-indicator disconnected">
+                        <span class="dot">●</span> <span id="wsStatusText">Disconnected</span>
+                    </span>
+                </div>
+                <div class="card-row" style="margin-top: 6px;">
+                    <span class="label">Microphone Status:</span>
+                    <span id="micStatus" class="status-indicator disconnected">
+                        <span class="dot">●</span> <span id="micStatusText">Checking...</span>
+                    </span>
+                    <button id="enableMicBtn" class="btn btn-primary" style="padding: 4px 10px; font-size: 0.78rem;">🎙️ ALLOW MIC</button>
+                </div>
+                <div class="card-row" style="margin-top: 6px;">
+                    <span class="label">Speaker Test:</span>
+                    <button id="testSpeakerBtn" class="btn btn-secondary" style="padding: 4px 12px; font-size: 0.8rem;">🔊 TEST SPEAKER</button>
+                </div>
+            </div>
+
+            <!-- Room Control Card -->
+            <div class="card room-control-card">
+                <h3>Voice Call Room</h3>
+                
+                <!-- State 1: No Room Joined -->
+                <div id="noRoomSection" class="room-action-box">
+                    <div class="input-group">
+                        <input type="text" id="roomIdInput" placeholder="Enter Room ID to Join" class="form-input">
+                        <button id="joinRoomBtn" class="btn btn-primary">JOIN ROOM</button>
+                    </div>
+                    <div class="divider"><span>OR</span></div>
+                    <button id="createRoomBtn" class="btn btn-secondary btn-block">+ CREATE NEW ROOM</button>
+
+                    <!-- Active Rooms List -->
+                    <div class="active-rooms-container" style="margin-top: 16px;">
+                        <h4 style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 8px;">Active Voice Rooms:</h4>
+                        <div id="activeRoomsList" class="members-list">
+                            <div class="empty-state" style="padding: 10px; font-size: 0.85rem;">No active rooms yet. Create one above!</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- State 2: Inside a Room -->
+                <div id="inRoomSection" class="room-active-box hidden">
+                    <div class="room-header-bar">
+                        <div class="room-title">
+                            <span class="room-label">ROOM:</span>
+                            <span id="activeRoomId" class="room-id-tag">--</span>
+                            <button id="copyRoomBtn" class="btn btn-secondary" style="padding: 2px 8px; font-size: 0.75rem; margin-left: 6px;">📋 COPY</button>
+                            <button id="shareLinkBtn" class="btn btn-secondary" style="padding: 2px 8px; font-size: 0.75rem; margin-left: 4px;">🔗 LINK</button>
+                            <button id="showQrBtn" class="btn btn-secondary" style="padding: 2px 8px; font-size: 0.75rem; margin-left: 4px;">📱 QR</button>
+                        </div>
+                        <button id="leaveRoomBtn" class="btn btn-danger-sm">LEAVE ROOM</button>
+                    </div>
+
+                    <div class="room-status-banner" id="roomStatusBanner">
+                        Waiting for another person to join this room...
+                    </div>
+
+                    <div class="room-members-container">
+                        <h4>Members in Room (<span id="memberCount">1</span>):</h4>
+                        <div id="roomMembersList" class="members-list">
+                            <!-- Members populated dynamically -->
+                        </div>
+                    </div>
+
+                    <div class="room-call-action">
+                        <button id="startRoomCallBtn" class="btn btn-success btn-lg btn-block" disabled>
+                            📞 START VOICE CALL
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <!-- QR Code Modal -->
+        <div id="qrModal" class="modal-overlay hidden">
+            <div class="modal-card">
+                <h2>Scan to Join Room</h2>
+                <p>Scan with phone camera to open app and join <strong id="qrRoomTag">ROOM</strong></p>
+                <div style="margin: 16px 0; display: flex; justify-content: center;">
+                    <canvas id="qrCanvas" width="200" height="200" style="border: 2px solid var(--border-color); border-radius: 8px; background: white; padding: 6px;"></canvas>
+                </div>
+                <button id="closeQrBtn" class="btn btn-secondary btn-block">CLOSE</button>
+            </div>
+        </div>
+
+        <!-- Audio DSP Settings Modal -->
+        <div id="settingsModal" class="modal-overlay hidden">
+            <div class="modal-card" style="text-align: left;">
+                <h2 style="text-align: center; margin-bottom: 16px;">⚙️ Audio DSP Settings</h2>
+                
+                <div class="setting-item">
+                    <label class="setting-label">
+                        <span>Echo Cancellation</span>
+                        <input type="checkbox" id="echoCancelToggle" checked>
+                    </label>
+                </div>
+                <div class="setting-item">
+                    <label class="setting-label">
+                        <span>Noise Suppression</span>
+                        <input type="checkbox" id="noiseSuppressToggle" checked>
+                    </label>
+                </div>
+                <div class="setting-item">
+                    <label class="setting-label">
+                        <span>Auto Gain Control</span>
+                        <input type="checkbox" id="autoGainToggle" checked>
+                    </label>
+                </div>
+                <div class="setting-item" style="flex-direction: column; align-items: flex-start;">
+                    <label style="font-size: 0.9rem; font-weight: 600;">Microphone Boost Gain: <span id="micBoostVal">2.0x</span></label>
+                    <input type="range" id="micBoostRange" min="1.0" max="3.0" step="0.1" value="2.0" style="width: 100%; margin-top: 6px;">
+                </div>
+
+                <div style="margin-top: 20px; display: flex; gap: 10px;">
+                    <button id="saveSettingsBtn" class="btn btn-primary btn-block">SAVE & APPLY</button>
+                    <button id="closeSettingsBtn" class="btn btn-secondary btn-block">CANCEL</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Select Call Recipient Modal -->
+        <div id="selectCallModal" class="modal-overlay hidden">
+            <div class="modal-card">
+                <h2>📞 Select Who to Call</h2>
+                <p>Members currently joined in <strong id="selectModalRoomId">ROOM</strong>:</p>
+                <div id="selectCallMemberList" class="members-list" style="margin: 16px 0; max-height: 200px; overflow-y: auto;">
+                    <!-- Populated dynamically with joined members -->
+                </div>
+                <button id="groupCallAllBtn" class="btn btn-success btn-block" style="margin-bottom: 8px;">
+                    📢 START GROUP CALL (ALL MEMBERS)
+                </button>
+                <button id="closeSelectCallBtn" class="btn btn-secondary btn-block">CANCEL</button>
+            </div>
+        </div>
+
+        <!-- Incoming Call Modal -->
+        <div id="incomingCallModal" class="modal-overlay hidden">
+            <div class="modal-card">
+                <div class="incoming-icon">📞</div>
+                <h2>Incoming Voice Call</h2>
+                <p><strong id="callerIdDisplay">CLIENT-A</strong> is calling you in room <span id="incomingRoomDisplay">ROOM-101</span></p>
+                <div class="modal-actions">
+                    <button id="acceptCallBtn" class="btn btn-success">ACCEPT</button>
+                    <button id="rejectCallBtn" class="btn btn-danger">REJECT</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Call Active Screen -->
+        <main id="callScreen" class="screen hidden">
+            <div class="card call-card">
+                <div class="call-header">
+                    <h2>PULSE RELAY VOICE CALL</h2>
+                    <div class="peer-display">
+                        <span id="localPeerName">CLIENT-A</span>
+                        <span class="call-arrow">⟷</span>
+                        <span id="remotePeerName">CLIENT-B</span>
+                    </div>
+                    <div id="callStatusBadge" class="status-indicator connected">
+                        <span class="dot">●</span> <span id="callStatusText">VOICE ACTIVE</span>
+                    </div>
+
+                    <!-- Live Audio Waveform Canvas Visualizer -->
+                    <div class="visualizer-container" style="margin-top: 10px;">
+                        <canvas id="audioWaveform" width="450" height="60" class="waveform-canvas"></canvas>
+                    </div>
+                </div>
+
+                <!-- QUIC Telemetry Grid -->
+                <div class="telemetry-box">
+                    <h4>QUIC MEDIA & GCC CONGESTION TELEMETRY</h4>
+                    <div class="telemetry-grid">
+                        <div class="tele-item">
+                            <span class="tele-label">QUIC Transport</span>
+                            <span id="quicStateVal" class="tele-val">CONNECTED</span>
+                        </div>
+                        <div class="tele-item">
+                            <span class="tele-label">RTT</span>
+                            <span id="rttVal" class="tele-val">12 ms</span>
+                        </div>
+                        <div class="tele-item">
+                            <span class="tele-label">Jitter</span>
+                            <span id="jitterVal" class="tele-val">2.0 ms</span>
+                        </div>
+                        <div class="tele-item">
+                            <span class="tele-label">Packet Loss</span>
+                            <span id="lossVal" class="tele-val">0.0 %</span>
+                        </div>
+                        <div class="tele-item">
+                            <span class="tele-label">Congestion State</span>
+                            <span id="ccStateVal" class="tele-val" style="color: #10b981;">GCC (NORMAL)</span>
+                        </div>
+                        <div class="tele-item">
+                            <span class="tele-label">Delay Gradient (ΔD)</span>
+                            <span id="delayGradientVal" class="tele-val">0.0 ms</span>
+                        </div>
+                        <div class="tele-item">
+                            <span class="tele-label">Packets TX / RX</span>
+                            <span id="packetsVal" class="tele-val">0 / 0</span>
+                        </div>
+                        <div class="tele-item">
+                            <span class="tele-label">Audio Codec</span>
+                            <span id="codecVal" class="tele-val">Opus (48kHz / 20ms)</span>
+                        </div>
+                    </div>
+
+                    <!-- Live Telemetry Line Chart Canvas -->
+                    <div style="margin-top: 12px; background: #0f172a; border-radius: 6px; padding: 6px;">
+                        <span style="font-size: 0.75rem; color: #94a3b8; display: block; margin-bottom: 4px;">Live RTT & Loss Graph (60fps):</span>
+                        <canvas id="telemetryChart" width="450" height="65" style="width: 100%; height: 65px; border-radius: 4px; display: block;"></canvas>
+                    </div>
+                </div>
+
+                <!-- Emoji Reactions Bar -->
+                <div class="emoji-bar">
+                    <button class="emoji-btn" data-emoji="👍">👍</button>
+                    <button class="emoji-btn" data-emoji="👏">👏</button>
+                    <button class="emoji-btn" data-emoji="🖐️">🖐️</button>
+                    <button class="emoji-btn" data-emoji="🔥">🔥</button>
+                    <button class="emoji-btn" data-emoji="❤️">❤️</button>
+                </div>
+
+                <!-- In-Call Text Chat Panel -->
+                <div class="chat-panel">
+                    <div id="chatMessages" class="chat-messages">
+                        <div class="chat-system-msg">System: Voice call connected. In-call chat ready.</div>
+                    </div>
+                    <div class="chat-input-row">
+                        <input type="text" id="chatInput" placeholder="Type a message..." class="form-input" style="flex: 1;">
+                        <button id="sendChatBtn" class="btn btn-primary" style="padding: 6px 14px;">Send</button>
+                    </div>
+                </div>
+
+                <!-- Active Call Participants & Secret Whisper Grid -->
+                <div id="whisperSection" class="whisper-section" style="margin-top: 10px; margin-bottom: 12px;">
+                    <div id="whisperStatusBanner" class="whisper-status-banner hidden">
+                        <span class="whisper-icon">🤫</span> <span id="whisperStatusText">Stealth Private Whisper Active</span>
+                    </div>
+                    <h4 style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 6px;">Call Participants & Secret Whispering:</h4>
+                    <div id="callParticipantsList" class="participants-grid" style="display: flex; gap: 8px; flex-wrap: wrap;">
+                        <!-- Populated dynamically with participant tiles & secret whisper toggle buttons -->
+                    </div>
+                </div>
+
+                <!-- Call Control Buttons -->
+                <div class="call-controls">
+                    <button id="muteBtn" class="btn btn-secondary">
+                        <span id="muteIcon">🎤</span> <span id="muteText">MUTE</span>
+                    </button>
+                    <button id="endCallBtn" class="btn btn-danger">END CALL</button>
+                </div>
+            </div>
+        </main>
+
+        <!-- System Logs & Footer -->
+        <footer class="app-footer">
+            <div id="logMessage" class="log-message">Ready</div>
+        </footer>
+    </div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>
