@@ -28,8 +28,17 @@ class ConnectionManager:
     async def connect(self, websocket: WebSocket, requested_id: Optional[str] = None) -> str:
         await websocket.accept()
         
-        # Determine unique client_id
-        if requested_id and requested_id not in self.clients:
+        # If client requested an ID that is already registered (stale connection), disconnect old socket first
+        if requested_id and requested_id in self.clients:
+            old_ws = self.clients[requested_id].get("websocket")
+            if old_ws:
+                try:
+                    await old_ws.close()
+                except Exception:
+                    pass
+            await self.disconnect(requested_id)
+
+        if requested_id:
             client_id = requested_id
         else:
             idx = 1
@@ -305,6 +314,9 @@ class ConnectionManager:
         await self._join_room_internal(client_id, room_id)
 
     async def _join_room_internal(self, client_id: str, room_id: str):
+        if client_id not in self.clients:
+            return
+
         # Leave existing room if any
         existing_room = self.clients[client_id].get("room_id")
         if existing_room and existing_room != room_id:

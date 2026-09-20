@@ -206,10 +206,17 @@
         });
     }
 
+    let pingInterval = null;
+
     // Connect WebSocket Signaling
     function initWebSocket() {
-        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        let wsUrl = `${protocol}//${window.location.host}/ws`;
+        if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
+            return;
+        }
+
+        const host = window.location.host || 'localhost:8000';
+        const protocol = (window.location.protocol === 'https:' || window.location.protocol === 'wss:') ? 'wss:' : 'ws:';
+        let wsUrl = `${protocol}//${host}/ws`;
         if (myId) {
             wsUrl += `?client_id=${myId}`;
         }
@@ -222,6 +229,13 @@
             updateWsStatus(true, 'Connected');
             updateLog('Connected to Pulse Relay server');
             
+            if (pingInterval) clearInterval(pingInterval);
+            pingInterval = setInterval(() => {
+                if (ws && ws.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify({ type: 'PING' }));
+                }
+            }, 10000);
+
             while (pendingSignalQueue.length > 0) {
                 const queued = pendingSignalQueue.shift();
                 ws.send(JSON.stringify(queued));
@@ -246,6 +260,10 @@
         };
 
         ws.onclose = () => {
+            if (pingInterval) {
+                clearInterval(pingInterval);
+                pingInterval = null;
+            }
             updateWsStatus(false, 'Disconnected');
             updateLog('Signaling connection lost. Retrying in 2s...');
             setTimeout(initWebSocket, 2000);
@@ -265,6 +283,18 @@
         } else {
             elements.wsStatus.className = 'status-indicator disconnected';
         }
+    }
+
+    if (elements.wsStatus) {
+        elements.wsStatus.style.cursor = 'pointer';
+        elements.wsStatus.title = 'Click to force reconnect signaling';
+        elements.wsStatus.addEventListener('click', () => {
+            updateLog('Manual reconnect requested...');
+            if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
+                try { ws.close(); } catch(e){}
+            }
+            initWebSocket();
+        });
     }
 
     function updateLog(msg) {
@@ -1440,7 +1470,7 @@
         try {
             const ctx = getAudioContext();
             const micSource = ctx.createMediaStreamSource(mediaStream);
-            micProcessorNode = ctx.createScriptProcessor(1024, 1, 1);
+            micProcessorNode = ctx.createScriptProcessor(2048, 1, 1);
             setupAudioAnalyser(micSource);
 
             micProcessorNode.onaudioprocess = (e) => {
@@ -1611,12 +1641,8 @@
             const currentTime = ctx.currentTime;
             let senderPlayTime = peerPlayTimes[senderId] || 0;
 
-            // Micro-adaptive playout alignment for continuous 1+ minute long streaming
-            if (senderPlayTime < currentTime || senderPlayTime > currentTime + 0.15) {
-                senderPlayTime = currentTime + 0.02;
-            } else if (senderPlayTime > currentTime + 0.08) {
-                // Micro-pull playout time forward to prevent clock drift buildup over minutes
-                senderPlayTime -= 0.001;
+            if (senderPlayTime < currentTime || senderPlayTime > currentTime + 0.35) {
+                senderPlayTime = currentTime + 0.03;
             }
 
             source.start(senderPlayTime);
