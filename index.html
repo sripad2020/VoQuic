@@ -1,0 +1,1450 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light">
+<title>VoQuic – self-hosted voice calling over QUIC</title>
+<meta name="description" content="VoQuic (Pulse Relay) is a self-hosted voice-over-QUIC server: WebSocket signaling, QUIC datagram media, Opus audio, jitter buffering and a browser UI.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,600;12..96,700&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+  color-scheme:light;
+
+  --bg:#ffffff;
+  --surface:#f5f7fb;
+  --line:#e3e8f0;
+  --line-2:#cdd6e4;
+  --ink:#0f1a2b;
+  --ink-2:#3f4f66;
+  --ink-3:#5a6a80;
+
+  --voice:#2f4bff;
+  --voice-soft:#eaeeff;
+  --sig:#0e9f7e;
+  --sig-soft:#e0f5ee;
+  --plc:#e89b16;
+  --plc-soft:#fff2d6;
+  --bad:#e5484d;
+  --bad-soft:#fdeaea;
+  --slate:#64748b;
+  --slate-soft:#eef1f6;
+
+  --display:'Bricolage Grotesque','Avenir Next','Segoe UI',system-ui,sans-serif;
+  --body:'Instrument Sans','Segoe UI',system-ui,-apple-system,sans-serif;
+  --mono:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+}
+html{scroll-behavior:smooth;scroll-padding-top:calc(72px + env(safe-area-inset-top,0px));height:auto}
+@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}*{transition:none!important;animation:none!important}}
+*,*::before,*::after{box-sizing:inherit}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--body);font-size:1.0625rem;line-height:1.6;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+img,svg,canvas{max-width:100%}
+a{color:var(--voice);text-decoration-thickness:1px;text-underline-offset:3px}
+a:hover{text-decoration-thickness:2px}
+:focus-visible{outline:3px solid var(--voice);outline-offset:3px;border-radius:6px}
+button{font:inherit;color:inherit;cursor:pointer}
+h1,h2,h3,h4{font-family:var(--display);font-weight:600;letter-spacing:-0.02em;line-height:1.08;margin:0;color:var(--ink)}
+p{margin:0}
+code,kbd,pre{font-family:var(--mono)}
+.wrap{width:100%;max-width:1220px;margin:0 auto;padding:0 clamp(20px,4vw,48px)}
+.sec{padding:clamp(72px,9vw,124px) 0}
+.sec-head{max-width:760px;margin-bottom:clamp(32px,4vw,56px)}
+.sec-head h2{font-size:clamp(2rem,4.2vw,3.2rem);margin-bottom:18px}
+.sec-head p{color:var(--ink-2);font-size:1.15rem;max-width:64ch}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+
+/* ───────── nav ───────── */
+.nav{position:sticky;top:env(safe-area-inset-top,0px);z-index:50;background:rgba(255,255,255,.88);backdrop-filter:saturate(1.4) blur(12px);-webkit-backdrop-filter:saturate(1.4) blur(12px);border-bottom:1px solid var(--line);padding-top:0}
+.nav .wrap{display:flex;align-items:center;gap:28px;height:64px}
+.brand{display:flex;align-items:center;gap:10px;font-family:var(--display);font-weight:700;font-size:1.25rem;color:var(--ink);text-decoration:none;letter-spacing:-0.03em}
+.brand-mark{width:26px;height:26px;display:block}
+.nav ul{display:flex;gap:22px;list-style:none;margin:0 0 0 auto;padding:0}
+.nav ul a{color:var(--ink-2);text-decoration:none;font-size:.95rem;font-weight:500;padding:6px 2px;border-bottom:2px solid transparent}
+.nav ul a:hover{color:var(--ink);border-bottom-color:var(--voice)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:46px;padding:0 22px;border-radius:999px;font-weight:600;font-size:1rem;text-decoration:none;border:1.5px solid var(--ink);background:var(--ink);color:#fff;transition:transform .15s,box-shadow .15s,background .15s}
+.btn:hover{background:#1c2b45;box-shadow:0 8px 20px -8px rgba(15,26,43,.5);text-decoration:none}
+.btn:active{transform:translateY(1px)}
+.btn.ghost{background:#fff;color:var(--ink)}
+.btn.ghost:hover{background:var(--surface);box-shadow:none}
+.btn.sm{min-height:38px;padding:0 16px;font-size:.92rem}
+@media (max-width:900px){.nav ul{display:none}.nav .btn{margin-left:auto}}
+
+/* ───────── hero ───────── */
+.hero{padding:clamp(28px,4vw,56px) 0 clamp(40px,5vw,72px);overflow:hidden}
+.hero-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.08fr);gap:clamp(12px,3vw,40px);align-items:center}
+.hero h1{font-size:clamp(2.5rem,5.6vw,4.6rem);font-weight:600;letter-spacing:-0.035em;line-height:1.0;margin-bottom:24px}
+.hero .lede{font-size:clamp(1.08rem,1.5vw,1.25rem);color:var(--ink-2);max-width:52ch;margin-bottom:30px}
+.cta{display:flex;flex-wrap:wrap;gap:12px;margin-bottom:38px}
+.spec{display:grid;grid-template-columns:1fr 1fr;gap:16px 28px;margin:0;max-width:540px}
+.spec div{border-left:3px solid var(--slate);padding-left:14px}
+.spec .s-sig{border-color:var(--sig)}
+.spec .s-voice{border-color:var(--voice)}
+.spec dt{font-size:.85rem;color:var(--ink-3);font-weight:500}
+.spec dd{margin:2px 0 0;font-weight:600;font-size:1rem}
+.stage{position:relative;width:100%;touch-action:pan-y}
+.stage canvas{display:block;width:100%;height:100%;cursor:grab;touch-action:pan-y}
+.stage canvas.grab{cursor:grabbing}
+.stage .fallback{display:none;position:absolute;inset:0;align-items:center;justify-content:center;text-align:center;padding:24px;color:var(--ink-3);background:var(--surface);border-radius:20px}
+.stage.no-webgl .fallback{display:flex}
+#hero3d{height:clamp(380px,60vh,640px)}
+.legend{display:flex;flex-wrap:wrap;gap:8px 20px;font-size:.88rem;color:var(--ink-3);margin-top:10px}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:7px;vertical-align:-1px}
+@media (max-width:900px){.hero-grid{grid-template-columns:1fr}#hero3d{height:420px}.hero-copy{order:1}.hero-viz{order:2}}
+
+/* ───────── why ───────── */
+.trio{display:grid;grid-template-columns:repeat(3,1fr);gap:0}
+.trio article{padding:6px clamp(20px,3vw,40px);border-left:1px solid var(--line-2)}
+.trio article:first-child{border-left:0;padding-left:0}
+.trio h3{font-size:1.5rem;margin-bottom:12px}
+.trio p{color:var(--ink-2)}
+.trio .k{display:inline-block;margin-top:16px;font-size:.92rem;color:var(--ink);font-weight:600}
+@media (max-width:820px){.trio{grid-template-columns:1fr;gap:34px}.trio article{border-left:0;border-top:1px solid var(--line-2);padding:26px 0 0}.trio article:first-child{border-top:0;padding-top:0}}
+
+/* ───────── call flow ───────── */
+.flow{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(0,1fr);gap:clamp(20px,3vw,44px);align-items:start}
+#flow3d{height:clamp(340px,46vw,500px)}
+.flow-ctl{display:flex;gap:10px;align-items:center;margin:10px 0 18px;flex-wrap:wrap}
+.flow-ctl .sp{flex:1}
+.detail{border:1px solid var(--line);border-left:4px solid var(--sig);border-radius:14px;padding:20px 22px;background:#fff;min-height:190px;transition:border-color .2s}
+.detail.media{border-left-color:var(--voice)}
+.detail .top{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-bottom:10px}
+.msg{font-family:var(--mono);font-size:.85rem;font-weight:500;padding:3px 10px;border-radius:6px;background:var(--sig-soft);color:#08694f}
+.detail.media .msg{background:var(--voice-soft);color:#1f34c4}
+.lane{font-size:.85rem;color:var(--ink-3)}
+.detail h3{font-size:1.45rem;margin-bottom:8px}
+.detail p{color:var(--ink-2);font-size:1rem}
+.states{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
+.chip{font-family:var(--mono);font-size:.78rem;padding:3px 9px;border-radius:999px;background:var(--slate-soft);color:var(--ink-2);border:1px solid var(--line)}
+.chip b{font-weight:500;color:var(--ink-3);margin-right:4px}
+.chip.RINGING{background:var(--plc-soft);border-color:#f2d28f}
+.chip.QUIC_CONNECTING{background:var(--voice-soft);border-color:#c9d3ff}
+.chip.VOICE_ACTIVE{background:var(--voice);color:#fff;border-color:var(--voice)}
+.chip.VOICE_ACTIVE b{color:#cfd7ff}
+.steps{list-style:none;margin:0;padding:0;border-left:2px solid var(--line)}
+.steps li{position:relative}
+.steps button{display:flex;align-items:center;gap:14px;width:100%;text-align:left;background:none;border:0;padding:11px 12px 11px 22px;position:relative;color:var(--ink-2);font-weight:500;border-radius:0 10px 10px 0}
+.steps button:hover{background:var(--surface);color:var(--ink)}
+.steps .n{position:absolute;left:-13px;width:24px;height:24px;border-radius:50%;background:#fff;border:2px solid var(--line-2);font-size:.72rem;display:grid;place-items:center;font-weight:600;color:var(--ink-3);transition:all .2s}
+.steps .t{flex:1}
+.steps .m{font-family:var(--mono);font-size:.72rem;color:var(--ink-3)}
+.steps button[aria-current="step"]{background:var(--surface);color:var(--ink);font-weight:600}
+.steps button[aria-current="step"] .n{background:var(--ink);border-color:var(--ink);color:#fff}
+.steps .sigdot .n{border-color:#9fdccb}
+.steps .mediadot .n{border-color:#b3c0ff}
+@media (max-width:900px){.flow{grid-template-columns:1fr}.flow-right{order:3}}
+
+/* ───────── features ───────── */
+.fgroup{display:grid;grid-template-columns:minmax(220px,300px) minmax(0,1fr);gap:clamp(20px,4vw,56px);padding:clamp(28px,3.5vw,44px) 0;border-top:1px solid var(--line)}
+.fgroup:last-child{border-bottom:1px solid var(--line)}
+.fgroup header h3{font-size:1.7rem;margin-bottom:10px}
+.fgroup header p{color:var(--ink-2);font-size:1rem}
+.fgroup header .tag{display:inline-block;width:34px;height:5px;border-radius:3px;margin-bottom:16px;background:var(--c)}
+.flist{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.feat{--c:var(--slate);position:relative;border:1px solid var(--line);border-radius:12px;padding:16px 18px 16px 20px;background:#fff;transform:perspective(900px) rotateX(var(--rx,0deg)) rotateY(var(--ry,0deg));transition:transform .18s ease-out,box-shadow .18s,border-color .18s;will-change:transform}
+.feat::before{content:"";position:absolute;left:0;top:14px;bottom:14px;width:3px;border-radius:0 3px 3px 0;background:var(--c)}
+.feat.lift{box-shadow:0 18px 34px -18px rgba(15,26,43,.28);border-color:var(--line-2)}
+.feat h4{font-size:1.05rem;letter-spacing:-0.01em;margin-bottom:6px}
+.feat p{font-size:.95rem;color:var(--ink-2);line-height:1.5}
+.feat p code,.mono-inline{font-family:var(--mono);font-size:.82em;background:var(--slate-soft);padding:1px 6px;border-radius:5px;color:var(--ink)}
+.feat .why{margin-top:8px;font-size:.9rem;color:var(--ink);font-weight:500}
+.g-sig{--c:var(--sig)}.g-voice{--c:var(--voice)}.g-plc{--c:var(--plc)}.g-ops{--c:var(--slate)}.g-cli{--c:#8b5cf6}
+@media (max-width:960px){.fgroup{grid-template-columns:1fr}.flist{grid-template-columns:1fr}}
+
+/* ───────── lab ───────── */
+.lab{display:grid;grid-template-columns:minmax(0,1fr);gap:18px}
+#lab3d{height:clamp(300px,36vw,420px)}
+.lab-panel{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:clamp(18px,3vw,40px);background:var(--surface);border-radius:18px;padding:clamp(18px,2.6vw,30px)}
+.ctrl{display:grid;gap:16px}
+.ctrl label{display:grid;gap:6px;font-weight:500;font-size:.95rem}
+.ctrl label span{display:flex;justify-content:space-between;gap:12px}
+.ctrl label output{font-family:var(--mono);font-size:.85rem;color:var(--voice);font-weight:500}
+input[type=range]{width:100%;accent-color:var(--voice);height:28px;margin:0}
+.ctl-row{display:flex;gap:10px;flex-wrap:wrap;margin-top:4px}
+.stats{display:grid;grid-template-columns:1fr 1fr;gap:12px;align-content:start}
+.stat{background:#fff;border-radius:12px;padding:12px 14px;border:1px solid var(--line);border-top:3px solid var(--c,var(--slate))}
+.stat b{display:block;font-family:var(--display);font-size:1.9rem;line-height:1.05;font-weight:600}
+.stat small{color:var(--ink-3);font-size:.85rem}
+.lab-note{grid-column:1/-1;background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px 16px;color:var(--ink-2);font-size:.98rem}
+.keys{display:flex;flex-wrap:wrap;gap:8px 22px;font-size:.88rem;color:var(--ink-3);margin-top:2px}
+.keys i{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:7px;vertical-align:-1px}
+@media (max-width:900px){.lab-panel{grid-template-columns:1fr}}
+
+/* ───────── packet anatomy ───────── */
+.anat{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:clamp(24px,4vw,64px);align-items:center}
+.anat-stage{position:relative;height:clamp(340px,42vw,470px);perspective:1400px;cursor:grab;touch-action:pan-y;display:grid;place-items:center;user-select:none;-webkit-user-select:none}
+.anat-stage.grab{cursor:grabbing}
+.rig{position:relative;width:min(400px,78%);aspect-ratio:400/230;transform-style:preserve-3d;transform:rotateX(var(--rx,56deg)) rotateZ(var(--rz,-24deg));transition:transform .25s ease-out}
+.anat-stage.grab .rig{transition:none}
+.layer{position:absolute;inset:0;border-radius:14px;border:2px solid var(--c);background:var(--bgc);padding:14px 18px;transform:translateZ(calc(var(--gap,60px) * var(--z)));transition:transform .25s ease-out,opacity .2s,box-shadow .2s;box-shadow:0 26px 40px -22px rgba(15,26,43,.35);display:flex;flex-direction:column;justify-content:space-between;backface-visibility:visible}
+.layer h4{font-size:clamp(.95rem,1.7vw,1.15rem)}
+.layer small{color:var(--ink-2);font-size:clamp(.72rem,1.2vw,.85rem);line-height:1.35;display:block}
+.layer .fields{display:flex;gap:8px;flex-wrap:wrap}
+.layer .fields span{font-family:var(--mono);font-size:clamp(.66rem,1.2vw,.82rem);background:#fff;border:1.5px solid var(--c);border-radius:6px;padding:3px 8px}
+.layer .wave{display:flex;align-items:center;gap:3px;height:34px}
+.layer .wave i{flex:1;background:var(--c);border-radius:2px;opacity:.8}
+.l0{--c:var(--voice);--bgc:rgba(234,238,255,.9);--z:0}
+.l1{--c:var(--sig);--bgc:rgba(224,245,238,.92);--z:1}
+.l2{--c:var(--plc);--bgc:rgba(255,242,214,.94);--z:2}
+.anat-stage[data-focus="0"] .l1,.anat-stage[data-focus="0"] .l2,
+.anat-stage[data-focus="1"] .l0,.anat-stage[data-focus="1"] .l2,
+.anat-stage[data-focus="2"] .l0,.anat-stage[data-focus="2"] .l1{opacity:.28}
+.anat-ctl{position:absolute;left:0;right:0;bottom:0;display:flex;gap:14px;align-items:center;flex-wrap:wrap;font-size:.9rem;color:var(--ink-3);justify-content:center}
+.anat-ctl input{width:150px}
+.anat-list{list-style:none;margin:0;padding:0;display:grid;gap:14px}
+.anat-list li{border:1px solid var(--line);border-left:4px solid var(--c);border-radius:12px;padding:14px 18px;background:#fff;cursor:default;transition:box-shadow .18s}
+.anat-list li:hover,.anat-list li:focus-within{box-shadow:0 14px 28px -18px rgba(15,26,43,.35)}
+.anat-list h4{font-size:1.1rem;margin-bottom:4px}
+.anat-list p{font-size:.96rem;color:var(--ink-2)}
+.anat-list code{font-size:.8rem;background:var(--slate-soft);padding:1px 6px;border-radius:5px}
+@media (max-width:900px){.anat{grid-template-columns:1fr}}
+
+/* ───────── business ───────── */
+.uc{display:grid;grid-template-columns:minmax(220px,300px) minmax(0,1fr);gap:clamp(20px,3vw,44px);align-items:start}
+.uc-tabs{display:grid;gap:4px;border-left:2px solid var(--line)}
+.uc-tabs button{background:none;border:0;text-align:left;padding:12px 16px;font-weight:500;color:var(--ink-2);border-left:4px solid transparent;margin-left:-2px;border-radius:0 10px 10px 0}
+.uc-tabs button:hover{background:var(--surface);color:var(--ink)}
+.uc-tabs button[aria-selected="true"]{border-left-color:var(--voice);background:var(--surface);color:var(--ink);font-weight:600}
+.uc-panel{border:1px solid var(--line);border-radius:16px;padding:clamp(20px,3vw,34px);min-height:360px}
+.uc-panel h3{font-size:clamp(1.5rem,2.6vw,2rem);margin-bottom:22px}
+.uc-cols{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:24px}
+.uc-cols h4{font-size:.98rem;margin-bottom:8px;padding-bottom:8px;border-bottom:3px solid var(--c)}
+.uc-cols p{font-size:.98rem;color:var(--ink-2)}
+.uc-cols .a{--c:var(--slate)}.uc-cols .b{--c:var(--voice)}.uc-cols .c{--c:var(--plc)}
+@media (max-width:960px){.uc{grid-template-columns:1fr}.uc-tabs{grid-template-columns:repeat(2,1fr);border-left:0}.uc-tabs button{border-left:0;border-bottom:3px solid transparent;margin:0;border-radius:8px 8px 0 0}.uc-tabs button[aria-selected="true"]{border-bottom-color:var(--voice)}.uc-cols{grid-template-columns:1fr}}
+@media (max-width:520px){.uc-tabs{grid-template-columns:1fr}}
+
+.score{margin-top:clamp(48px,6vw,84px);display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:0;border-top:1px solid var(--line-2);border-bottom:1px solid var(--line-2)}
+.score div{padding:22px clamp(12px,1.6vw,22px);border-left:1px solid var(--line)}
+.score div:first-child{border-left:0;padding-left:0}
+.score h4{font-size:1.15rem;margin-bottom:8px}
+.score p{font-size:.94rem;color:var(--ink-2);line-height:1.5}
+@media (max-width:960px){.score{grid-template-columns:1fr 1fr}.score div{border-left:0;border-top:1px solid var(--line);padding-left:0}.score div:nth-child(-n+2){border-top:0}}
+@media (max-width:560px){.score{grid-template-columns:1fr}.score div:nth-child(2){border-top:1px solid var(--line)}}
+
+.calc{margin-top:clamp(48px,6vw,84px);display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.1fr);gap:clamp(20px,4vw,56px);background:var(--surface);border-radius:20px;padding:clamp(22px,3.4vw,44px);align-items:center}
+.calc h3{font-size:clamp(1.5rem,2.6vw,2.1rem);margin-bottom:10px}
+.calc .hint{color:var(--ink-2);font-size:.98rem;margin-bottom:20px}
+.calc .ctrl label span{align-items:baseline}
+.bars{display:grid;gap:18px}
+.bar{display:grid;gap:6px}
+.bar .lbl{display:flex;justify-content:space-between;font-weight:500;font-size:.95rem}
+.bar .lbl b{font-family:var(--display);font-size:1.4rem;font-weight:600}
+.bar .track{height:16px;background:#fff;border-radius:8px;overflow:hidden;border:1px solid var(--line)}
+.bar .fill{height:100%;border-radius:8px;transition:width .3s ease-out;width:0}
+.bar.hosted .fill{background:var(--slate)}
+.bar.self .fill{background:var(--voice)}
+.verdict{margin-top:6px;padding:14px 16px;background:#fff;border:1px solid var(--line);border-radius:12px;font-size:.98rem;color:var(--ink-2)}
+.verdict strong{color:var(--ink)}
+.fine{font-size:.85rem;color:var(--ink-3);margin-top:10px}
+@media (max-width:900px){.calc{grid-template-columns:1fr}}
+
+/* ───────── why quic table ───────── */
+.tbl-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:14px}
+table{border-collapse:collapse;width:100%;min-width:640px}
+th,td{text-align:left;padding:16px 20px;vertical-align:top;border-bottom:1px solid var(--line)}
+tr:last-child td,tr:last-child th{border-bottom:0}
+thead th{background:var(--surface);font-family:var(--display);font-size:1.05rem}
+tbody th{font-weight:600;width:22%}
+td{color:var(--ink-2);font-size:.98rem}
+td.win{color:var(--ink)}
+td.win::before{content:"";display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--voice);margin-right:10px}
+
+/* ───────── run ───────── */
+.run{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:clamp(24px,4vw,56px);align-items:start}
+.code{position:relative;background:var(--ink);color:#dfe7f5;border-radius:14px;margin-bottom:16px;overflow:hidden}
+.code .cap{padding:10px 18px;font-size:.82rem;color:#9fb0c9;border-bottom:1px solid rgba(255,255,255,.1);font-family:var(--body)}
+.code pre{margin:0;padding:16px 18px;overflow-x:auto;font-size:.88rem;line-height:1.7}
+.code .c{color:#7d8ea8}
+.code .copy{position:absolute;right:10px;top:7px;background:rgba(255,255,255,.1);border:0;color:#fff;border-radius:8px;padding:3px 12px;font-size:.8rem;min-height:26px}
+.code .copy:hover{background:rgba(255,255,255,.2)}
+.env{width:100%;min-width:0}
+.env th,.env td{padding:11px 14px;font-size:.94rem}
+.env thead th{font-size:.92rem}
+.env td:first-child{font-family:var(--mono);font-size:.84rem;color:var(--ink)}
+.growth{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 clamp(20px,4vw,56px)}
+.growth div{padding:20px 0;border-top:1px solid var(--line)}
+.growth h4{font-size:1.2rem;margin-bottom:6px}
+.growth p{color:var(--ink-2);font-size:.98rem}
+.note{display:inline-block;margin-bottom:24px;padding:6px 14px;border-radius:999px;background:var(--plc-soft);color:#7a4d00;font-size:.9rem;font-weight:500}
+@media (max-width:900px){.run{grid-template-columns:1fr}.growth{grid-template-columns:1fr}}
+
+footer{border-top:1px solid var(--line);padding:44px 0 56px;color:var(--ink-3);font-size:.94rem}
+footer .wrap{display:flex;flex-wrap:wrap;gap:16px 40px;justify-content:space-between;align-items:center}
+footer p{max-width:60ch}
+</style>
+</head>
+<body>
+
+<header class="nav">
+  <div class="wrap">
+    <a class="brand" href="#top" aria-label="VoQuic home">
+      <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="14" fill="none" stroke="#2f4bff" stroke-width="2.4"/><circle cx="16" cy="16" r="5" fill="#2f4bff"/><path d="M16 2 A14 14 0 0 1 30 16" fill="none" stroke="#0e9f7e" stroke-width="2.4" stroke-linecap="round"/></svg>
+      VoQuic
+    </a>
+    <ul>
+      <li><a href="#call">Call flow</a></li>
+      <li><a href="#features">Features</a></li>
+      <li><a href="#lab">Jitter lab</a></li>
+      <li><a href="#packet">Voice packet</a></li>
+      <li><a href="#business">Business</a></li>
+      <li><a href="#run">Run it</a></li>
+    </ul>
+    <a class="btn sm" href="https://github.com/sripad2020/VoQuic" target="_blank" rel="noopener">View on GitHub</a>
+  </div>
+</header>
+
+<main id="top">
+
+<!-- ═════════ HERO ═════════ -->
+<section class="hero">
+  <div class="wrap hero-grid">
+    <div class="hero-copy">
+      <h1>Voice calls over QUIC, on a server you own.</h1>
+      <p class="lede">VoQuic, also called Pulse Relay, is a self-hosted calling server. Clients sign in over WebSocket, ring each other, then send Opus audio as QUIC datagrams through the relay. It ships with a browser UI and starts with one command.</p>
+      <div class="cta">
+        <a class="btn" href="#call">Watch a call happen</a>
+        <a class="btn ghost" href="#run">Run it in 2 minutes</a>
+      </div>
+      <dl class="spec">
+        <div class="s-sig"><dt>Signaling</dt><dd>WebSocket at /ws</dd></div>
+        <div class="s-voice"><dt>Media</dt><dd>QUIC datagrams on :4433</dd></div>
+        <div class="s-voice"><dt>Audio</dt><dd>Opus, 20 ms frames</dd></div>
+        <div><dt>Web UI</dt><dd>HTTP :8000 or HTTPS :8443</dd></div>
+      </dl>
+    </div>
+    <div class="hero-viz">
+      <div class="stage" id="hero3d" role="img" aria-label="3D model: seven client devices connected to a central VoQuic relay. Blue dots are voice frames, green dots are signaling messages. Drag to rotate.">
+        <div class="fallback">The 3D view needs WebGL. Everything else on this page still works.</div>
+      </div>
+      <div class="legend"><span><i style="background:#2f4bff"></i>Voice frames</span><span><i style="background:#0e9f7e"></i>Signaling</span><span>Drag the scene to rotate it</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- ═════════ WHY ═════════ -->
+<section class="sec" id="why">
+  <div class="wrap">
+    <div class="sec-head">
+      <h2>Voice is a cost line, a privacy risk and a latency problem.</h2>
+      <p>Most teams rent calling from a platform and inherit its pricing, its data path and its network behavior. VoQuic puts all three in your hands.</p>
+    </div>
+    <div class="trio">
+      <article>
+        <h3>Cost follows hardware</h3>
+        <p>Hosted voice is billed per seat or per minute. VoQuic runs on a machine you already have, so the bill tracks the server, not the headcount.</p>
+        <span class="k">Try the cost explorer below</span>
+      </article>
+      <article>
+        <h3>Calls stay on your network</h3>
+        <p>Presence, signaling and audio all flow through your own relay. There is no third-party media path to review when a customer or auditor asks where voice goes.</p>
+        <span class="k">HTTP for the LAN, HTTPS when you need it</span>
+      </article>
+      <article>
+        <h3>Late audio is dropped, not replayed</h3>
+        <p>Voice is only useful now. QUIC datagrams skip retransmission, and a jitter buffer with loss concealment smooths over what goes missing.</p>
+        <span class="k">See it in the jitter lab</span>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- ═════════ CALL FLOW ═════════ -->
+<section class="sec" id="call" style="padding-top:0">
+  <div class="wrap">
+    <div class="sec-head">
+      <h2>Follow one call from sign-in to hang-up.</h2>
+      <p>Signaling and media travel on separate lanes. Pick a step, or let it play, and watch which lane each message uses and how each client's call state changes.</p>
+    </div>
+    <div class="flow">
+      <div class="flow-left">
+        <div class="stage" id="flow3d" role="img" aria-label="3D model of a call between Client A and Client B through the VoQuic relay, showing the signaling lane in green and the voice lane in blue.">
+          <div class="fallback">The 3D view needs WebGL. The step list still explains the whole call.</div>
+        </div>
+        <div class="flow-ctl">
+          <button class="btn sm ghost" id="flowPrev" type="button">Previous</button>
+          <button class="btn sm" id="flowPlay" type="button">Pause</button>
+          <button class="btn sm ghost" id="flowNext" type="button">Next step</button>
+          <span class="sp"></span>
+          <span class="lane" style="font-size:.85rem;color:var(--ink-3)">Drag the scene to look around</span>
+        </div>
+        <div class="detail" id="detail" aria-live="polite">
+          <div class="top"><span class="msg" id="dMsg">REGISTER</span><span class="lane" id="dLane">Signaling lane</span></div>
+          <h3 id="dTitle"></h3>
+          <p id="dText"></p>
+          <div class="states"><span class="chip" id="dA"></span><span class="chip" id="dB"></span></div>
+        </div>
+      </div>
+      <div class="flow-right">
+        <ol class="steps" id="steps"></ol>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═════════ FEATURES ═════════ -->
+<section class="sec" id="features" style="padding-top:clamp(24px,3vw,40px)">
+  <div class="wrap">
+    <div class="sec-head">
+      <h2>Every feature in the repository, and why it matters.</h2>
+      <p>Each item below comes from the VoQuic source: the server launcher, the native client, and the requirements file. The line in bold is the business reason it exists.</p>
+    </div>
+
+    <div class="fgroup g-sig">
+      <header><span class="tag"></span><h3>Signaling and call control</h3><p>A WebSocket channel carries everything that is not audio: who is online, who is calling, and what state each call is in.</p></header>
+      <div class="flist">
+        <div class="feat"><h4>WebSocket signaling endpoint</h4><p>Clients connect to <code>/ws</code> and can pass <code>?client_id=</code> to keep a stable name.</p><p class="why">Name devices after places, like DOCK-3 or FRONT-DESK, and calls read like your org chart.</p></div>
+        <div class="feat"><h4>Registration</h4><p>The server confirms the client ID and tells the client which QUIC port to use for audio.</p><p class="why">No manual port setup on any device.</p></div>
+        <div class="feat"><h4>Presence list</h4><p><code>CLIENT_LIST</code> returns everyone online along with their current status.</p><p class="why">Callers see who is free before they dial.</p></div>
+        <div class="feat"><h4>Ring, accept, reject</h4><p><code>CALL</code> reaches the target as <code>CALL_INCOMING</code> with the caller and a call ID. The target replies <code>CALL_ACCEPT</code> or <code>CALL_REJECT</code> with a reason.</p><p class="why">A declined call is a clear outcome, not a timeout.</p></div>
+        <div class="feat"><h4>End with a reason</h4><p><code>CALL_END</code> carries a reason string, and both clients return to IDLE.</p><p class="why">Support teams get something concrete to log.</p></div>
+        <div class="feat"><h4>Mute sync</h4><p>Muting sends <code>MUTE</code> with the call ID and a muted flag. The peer is notified and the muted client stops sending audio.</p><p class="why">Both people know why it went quiet.</p></div>
+        <div class="feat"><h4>Explicit call states</h4><p><code>IDLE</code>, <code>RINGING</code>, <code>QUIC_CONNECTING</code> and <code>VOICE_ACTIVE</code> describe every client at all times.</p><p class="why">Easy to build status lights, dashboards and tests around.</p></div>
+      </div>
+    </div>
+
+    <div class="fgroup g-voice">
+      <header><span class="tag"></span><h3>The media path</h3><p>Once both sides agree, audio leaves the WebSocket and moves to a purpose-built voice channel.</p></header>
+      <div class="flist">
+        <div class="feat"><h4>Signaling-to-media handoff</h4><p><code>QUIC_INFO</code> delivers the call ID and media port. The client answers with <code>CALL_CONNECTED</code>.</p><p class="why">Audio starts only after the client confirms it is ready.</p></div>
+        <div class="feat"><h4>Datagram media transport</h4><p>Voice frames go to the server's QUIC port (4433 by default) as individual datagrams, with no retransmission queue.</p><p class="why">Stale audio is never replayed late, so the call stays live.</p></div>
+        <div class="feat"><h4>Voice packet format</h4><p>Each packet holds a call ID, sender ID, sequence number and the audio payload. <code>VoicePacket.parse()</code> reads it back.</p><p class="why">Sequence numbers let receivers reorder frames and spot gaps.</p></div>
+        <div class="feat"><h4>Opus codec</h4><p>Audio is encoded and decoded with Opus in fixed-size frames.</p><p class="why">Opus is designed for speech: clear voice at modest bandwidth.</p></div>
+        <div class="feat"><h4>20 ms transmit loop</h4><p>While a call is <code>VOICE_ACTIVE</code> and unmuted, the client sends one frame every 20 ms.</p><p class="why">That is 50 packets a second per direction, which makes capacity planning simple arithmetic.</p></div>
+      </div>
+    </div>
+
+    <div class="fgroup g-plc">
+      <header><span class="tag"></span><h3>Resilience</h3><p>Real networks reorder, delay and drop packets. These pieces keep speech intelligible when they do.</p></header>
+      <div class="flist">
+        <div class="feat"><h4>Jitter buffer</h4><p>Incoming packets are pushed in as they arrive and popped in order at playout time.</p><p class="why">Smooths the uneven arrival Wi-Fi and mobile links produce.</p></div>
+        <div class="feat"><h4>Packet-loss concealment</h4><p>When a frame is missing, <code>pop()</code> flags it and <code>decode(None)</code> synthesizes a stand-in.</p><p class="why">A lost packet becomes a brief blur instead of a dropout.</p></div>
+        <div class="feat"><h4>Concurrent async loops</h4><p>Signaling, media receive and media transmit run as separate asyncio tasks.</p><p class="why">Control traffic and audio run independently of each other.</p></div>
+      </div>
+    </div>
+
+    <div class="fgroup g-ops">
+      <header><span class="tag"></span><h3>Run and deploy</h3><p>Small enough to understand, flexible enough to move from a laptop to a server room.</p></header>
+      <div class="flist">
+        <div class="feat"><h4>One-command start</h4><p><code>python run.py</code> serves the web UI and signaling on port 8000.</p><p class="why">From clone to first call in minutes.</p></div>
+        <div class="feat"><h4>HTTPS mode</h4><p><code>python run.py --ssl</code>, or <code>USE_SSL=1</code>, serves on 8443 with a self-signed certificate that is generated for you.</p><p class="why">Browsers require HTTPS before other devices can use the microphone.</p></div>
+        <div class="feat"><h4>Environment configuration</h4><p><code>HOST</code>, <code>HTTP_PORT</code>, <code>HTTPS_PORT</code> and <code>USE_SSL</code> change the bindings without touching code.</p><p class="why">Fits containers, services and CI.</p></div>
+        <div class="feat"><h4>LAN-ready by default</h4><p>The server binds to <code>0.0.0.0</code> and prints a LAN URL pattern, so any device on the network can join.</p><p class="why">Works on a closed site network with no internet.</p></div>
+        <div class="feat"><h4>Lean stack</h4><p>FastAPI, Uvicorn, Pydantic and Starlette. Four dependencies in total.</p><p class="why">A small surface to audit, patch and host.</p></div>
+      </div>
+    </div>
+
+    <div class="fgroup g-cli">
+      <header><span class="tag"></span><h3>Clients and quality</h3><p>Two ways to place a call, plus tests to keep changes honest.</p></header>
+      <div class="flist">
+        <div class="feat"><h4>Browser client</h4><p>The server serves the web UI on the same port as signaling.</p><p class="why">Nothing to install for end users.</p></div>
+        <div class="feat"><h4>Native CLI client</h4><p><code>client.py</code> takes commands: <code>C &lt;id&gt;</code> call, <code>A</code> accept, <code>R</code> reject, <code>M</code> mute, <code>E</code> end, <code>Q</code> quit.</p><p class="why">Scriptable testing, and a reference for building other clients.</p></div>
+        <div class="feat"><h4>Test suite</h4><p>A <code>tests/</code> directory ships with the repository.</p><p class="why">Regression safety as you extend the system.</p></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═════════ JITTER LAB ═════════ -->
+<section class="sec" id="lab">
+  <div class="wrap">
+    <div class="sec-head">
+      <h2>Why the jitter buffer matters, in slow motion.</h2>
+      <p>A sender emits one frame every 20 ms. The network delays some, reorders some and loses some. Change the conditions and see how a buffer of a given depth copes. This is an interactive model of the push and pop pattern the VoQuic client uses, not a recording of its code.</p>
+    </div>
+    <div class="lab">
+      <div class="stage" id="lab3d" role="img" aria-label="3D simulation of numbered voice packets crossing a network, waiting in a jitter buffer, and being played out in order. Missing frames are replaced by amber concealment blocks.">
+        <div class="fallback">The 3D view needs WebGL. The controls and counters below still work.</div>
+      </div>
+      <div class="keys"><span><i style="background:#8a9bff"></i>Frame waiting in buffer</span><span><i style="background:#2f4bff"></i>Frame played</span><span><i style="background:#e89b16"></i>Concealed (PLC)</span><span><i style="background:#e5484d"></i>Lost or too late</span></div>
+      <div class="lab-panel">
+        <div class="ctrl">
+          <label><span>Network jitter <output id="oJit">40 ms</output></span><input id="rJit" type="range" min="0" max="120" step="5" value="40"></label>
+          <label><span>Packet loss <output id="oLoss">8 %</output></span><input id="rLoss" type="range" min="0" max="30" step="1" value="8"></label>
+          <label><span>Buffer depth <output id="oDepth">3 frames (60 ms)</output></span><input id="rDepth" type="range" min="1" max="8" step="1" value="3"></label>
+          <label><span>Speed <output id="oSpeed">8 % of real time</output></span><input id="rSpeed" type="range" min="3" max="30" step="1" value="8"></label>
+          <div class="ctl-row"><button class="btn sm" id="labPlay" type="button">Pause</button><button class="btn sm ghost" id="labReset" type="button">Restart</button></div>
+        </div>
+        <div class="stats">
+          <div class="stat" style="--c:var(--voice)"><b id="stPlayed">0</b><small>Frames played</small></div>
+          <div class="stat" style="--c:var(--plc)"><b id="stPlc">0</b><small>Concealed by PLC</small></div>
+          <div class="stat" style="--c:var(--bad)"><b id="stLate">0</b><small>Arrived too late</small></div>
+          <div class="stat" style="--c:var(--bad)"><b id="stLost">0</b><small>Lost in network</small></div>
+        </div>
+        <div class="lab-note" id="labNote"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═════════ PACKET ═════════ -->
+<section class="sec" id="packet">
+  <div class="wrap">
+    <div class="sec-head">
+      <h2>Inside one voice packet.</h2>
+      <p>Fifty of these leave each speaking client every second. Drag to turn the stack, use the slider to pull it apart, and hover a layer's description to isolate it.</p>
+    </div>
+    <div class="anat">
+      <div class="anat-stage" id="anatStage" data-focus="" aria-label="Exploded 3D view of a VoQuic voice packet with three layers">
+        <div class="rig" id="rig">
+          <div class="layer l0"><div><h4>Datagram to the relay</h4><small>Sent to the server's media port, 4433 by default</small></div><small>Unreliable delivery: no retransmit</small></div>
+          <div class="layer l1"><div><h4>Voice packet header</h4><small>Read back with VoicePacket.parse()</small></div><div class="fields"><span>call_id</span><span>sender_id</span><span>sequence</span></div></div>
+          <div class="layer l2"><div><h4>Opus payload</h4><small>One 20 ms frame of encoded speech</small></div><div class="wave" aria-hidden="true"><i style="height:30%"></i><i style="height:55%"></i><i style="height:80%"></i><i style="height:45%"></i><i style="height:95%"></i><i style="height:60%"></i><i style="height:35%"></i><i style="height:70%"></i><i style="height:50%"></i><i style="height:85%"></i><i style="height:40%"></i><i style="height:25%"></i></div></div>
+        </div>
+        <div class="anat-ctl"><label for="rGap">Pull apart</label><input id="rGap" type="range" min="0" max="110" value="70"><button class="btn sm ghost" id="anatReset" type="button">Reset view</button></div>
+      </div>
+      <ul class="anat-list">
+        <li tabindex="0" data-layer="2" style="--c:var(--plc)"><h4>The audio itself</h4><p>Opus compresses 20 ms of speech into a small payload. Created by <code>codec.encode()</code>, restored by <code>codec.decode()</code>.</p></li>
+        <li tabindex="0" data-layer="1" style="--c:var(--sig)"><h4>Who, which call, which frame</h4><p>Built by <code>create_voice_packet(call_id, sender_id, sequence, payload)</code>. The sequence number is what lets the jitter buffer put frames back in order.</p></li>
+        <li tabindex="0" data-layer="0" style="--c:var(--voice)"><h4>How it travels</h4><p><code>pkt.serialize()</code> turns the packet into bytes, which are sent to the relay as one datagram. If it is lost, nothing waits for it.</p></li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ═════════ BUSINESS ═════════ -->
+<section class="sec" id="business" style="padding-top:0">
+  <div class="wrap">
+    <div class="sec-head">
+      <h2>Where a private voice relay pays off.</h2>
+      <p>Choose a setting to see the need it answers, what VoQuic already provides, and what a production rollout would add on top.</p>
+    </div>
+
+    <div class="uc">
+      <div class="uc-tabs" role="tablist" aria-label="Use cases" id="ucTabs"></div>
+      <div class="uc-panel" role="tabpanel" id="ucPanel" aria-live="polite"></div>
+    </div>
+
+    <div class="score">
+      <div><h4>Predictable cost</h4><p>One server and no per-seat licence. Growth means adding capacity, not renegotiating a contract.</p></div>
+      <div><h4>Data control</h4><p>Signaling and audio stay on infrastructure you choose, in the region you choose.</p></div>
+      <div><h4>Quality under stress</h4><p>Datagrams, a jitter buffer and loss concealment are built for imperfect networks.</p></div>
+      <div><h4>Low operating burden</h4><p>Four dependencies, one launch command and environment-based configuration.</p></div>
+      <div><h4>Yours to extend</h4><p>Plain Python and typed JSON messages that your own engineers can read and change.</p></div>
+    </div>
+
+    <div class="calc">
+      <div>
+        <h3>Cost explorer</h3>
+        <p class="hint">Enter your own numbers. The defaults are placeholders, not benchmarks.</p>
+        <div class="ctrl">
+        </div>
+      </div>
+      <div>
+        <div class="bars">
+          <div class="bar hosted"><div class="lbl"><span>Hosted platform, per year</span><b id="cHosted">$0</b></div><div class="track"><div class="fill" id="fHosted"></div></div></div>
+          <div class="bar self"><div class="lbl"><span>Self-hosted VoQuic, per year</span><b id="cSelf">$0</b></div><div class="track"><div class="fill" id="fSelf"></div></div></div>
+        </div>
+        <div class="verdict" id="cVerdict"></div>
+        <p class="fine">Illustrative arithmetic only. It ignores one-time setup, hardware refresh and the production additions listed further down.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═════════ WHY QUIC ═════════ -->
+<section class="sec" id="quic" style="padding-top:0">
+  <div class="wrap">
+    <div class="sec-head">
+      <h2>What QUIC's design offers live voice.</h2>
+      <p>The protocol properties that matter for calling, compared between audio over a WebSocket on TCP and audio as QUIC datagrams, which is the model VoQuic is built around.</p>
+    </div>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th></th><th>Audio over WebSocket (TCP)</th><th>Audio as QUIC datagrams (VoQuic's design)</th></tr></thead>
+        <tbody>
+          <tr><th scope="row">When a packet is lost</th><td>Later data waits until the lost segment is retransmitted, so the whole stream stalls.</td><td class="win">Datagrams are unreliable by design. The receiver conceals the gap and keeps going.</td></tr>
+          <tr><th scope="row">Connection setup</th><td>A TCP handshake, then a TLS handshake, then the WebSocket upgrade.</td><td class="win">QUIC combines transport and TLS 1.3 setup into one handshake.</td></tr>
+          <tr><th scope="row">Changing networks</th><td>The connection is tied to an address pair, so moving from Wi-Fi to mobile usually drops it.</td><td class="win">QUIC connections use connection IDs, which are designed to survive address changes.</td></tr>
+          <tr><th scope="row">Encryption</th><td>Optional layer on top of the transport.</td><td class="win">TLS 1.3 is built into the protocol.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="fine" style="margin-top:14px;max-width:80ch">A note on the current code: the native client sends its voice frames through a plain UDP socket to the relay port, and requirements.txt does not include a QUIC library. Properties such as TLS 1.3 encryption and connection migration come from a full QUIC stack, so treat them as what the design can deliver once one is in place.</p>
+  </div>
+</section>
+
+<!-- ═════════ RUN ═════════ -->
+<section class="sec" id="run" style="padding-top:0">
+  <div class="wrap">
+    <div class="sec-head">
+      <h2>Make your first call in two minutes.</h2>
+      <p>You need Python and a network. Start the server, then open the web UI on two devices, or use the CLI client in two terminals.</p>
+    </div>
+    <div class="run">
+      <div>
+        <div class="code"><div class="cap">Install and start the server</div><button class="copy" type="button">Copy</button><pre>git clone https://github.com/sripad2020/VoQuic
+cd VoQuic
+pip install -r requirements.txt
+python run.py            <span class="c"># http://localhost:8000</span>
+python run.py --ssl      <span class="c"># https://localhost:8443</span></pre></div>
+        <div class="code"><div class="cap">Call from two terminals with the native client</div><button class="copy" type="button">Copy</button><pre>pip install websockets
+python client.py 192.168.1.20 CLIENT-A
+python client.py 192.168.1.20 CLIENT-B
+<span class="c"># in CLIENT-A:</span>
+C CLIENT-B
+<span class="c"># in CLIENT-B:</span>
+A</pre></div>
+      </div>
+      <div>
+        <div class="tbl-wrap">
+          <table class="env">
+            <thead><tr><th>Setting</th><th>What it does</th></tr></thead>
+            <tbody>
+              <tr><td>HOST</td><td>Bind address. Default 0.0.0.0</td></tr>
+              <tr><td>HTTP_PORT</td><td>Web UI and signaling. Default 8000</td></tr>
+              <tr><td>HTTPS_PORT</td><td>Same, with TLS. Default 8443</td></tr>
+              <tr><td>USE_SSL</td><td>Set to 1 for HTTPS, same as --ssl</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="fine" style="margin-top:14px">On a phone, a self-signed certificate shows a warning. Tap Advanced, then continue to the site.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═════════ GROWTH ═════════ -->
+<section class="sec" id="growth" style="padding-top:0">
+  <div class="wrap">
+    <div class="sec-head">
+      <h2>Built to grow into production.</h2>
+      <p>VoQuic is a compact foundation. These are suggested next steps for a business rollout, not features in the repository today.</p>
+    </div>
+    <span class="note">Proposed roadmap, not shipped functionality</span>
+    <div class="growth">
+      <div><h4>Live microphone and speaker in the CLI client</h4><p>The client currently sends placeholder audio frames. Wiring in real capture and playback turns it into a full reference client.</p></div>
+      <div><h4>A full QUIC transport</h4><p>Adopting a QUIC library on both the relay and the clients would bring TLS 1.3 encryption and connection migration to the media path.</p></div>
+      <div><h4>Authentication and per-call encryption</h4><p>Token-based sign-in and end-to-end keys would satisfy healthcare, finance and enterprise security reviews.</p></div>
+      <div><h4>Group calls and conference rooms</h4><p>Mixing or forwarding several senders in one call opens team channels, dispatch groups and all-hands.</p></div>
+      <div><h4>Metrics and call records</h4><p>Loss, jitter and duration per call give operations teams a dashboard and give support a paper trail.</p></div>
+      <div><h4>Containers and high availability</h4><p>A container image and a second relay node move the service from a single box to a resilient deployment.</p></div>
+      <div><h4>Web and mobile SDKs</h4><p>Packaging the signaling and media client as a library lets other teams add calling to their own apps in days rather than weeks.</p></div>
+      <div><h4>Routing and queues</h4><p>Ring groups, hold queues and call transfer make it fit contact-centre and front-desk workflows.</p></div>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer>
+  <div class="wrap">
+    <p>VoQuic overview page, written from the public source at github.com/sripad2020/VoQuic. Where the source does not show a feature, this page does not claim it.</p>
+    <a class="btn ghost sm" href="https://github.com/sripad2020/VoQuic" target="_blank" rel="noopener">Open the repository</a>
+  </div>
+</footer>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(function(){
+'use strict';
+
+/* ───────────────────────── helpers ───────────────────────── */
+var $=function(s,r){return (r||document).querySelector(s)};
+var $$=function(s,r){return Array.prototype.slice.call((r||document).querySelectorAll(s))};
+var clamp=function(v,a,b){return Math.max(a,Math.min(b,v))};
+var lerp=function(a,b,t){return a+(b-a)*t};
+var ease=function(t){return t<.5?2*t*t:1-Math.pow(-2*t+2,2)/2};
+var REDUCE=window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches;
+var HOVER=window.matchMedia&&matchMedia('(hover: hover) and (pointer: fine)').matches;
+var C={voice:0x2f4bff,voiceLight:0x8a9bff,sig:0x0e9f7e,plc:0xe89b16,bad:0xe5484d,ink:0x0f1a2b,line:0xcdd6e4,idle:0xe6ebf3,slate:0x8794a8};
+
+function safe(fn,name){try{fn()}catch(e){console.error('[voquic] '+name+' failed',e)}}
+
+/* ───────────────────────── 3D infrastructure ───────────────────────── */
+var stages=[];
+var haveThree=!!window.THREE;
+
+function roundRect(c,x,y,w,h,r){c.beginPath();c.moveTo(x+r,y);c.arcTo(x+w,y,x+w,y+h,r);c.arcTo(x+w,y+h,x,y+h,r);c.arcTo(x,y+h,x,y,r);c.arcTo(x,y,x+w,y,r);c.closePath()}
+
+function textTexture(text,o){
+  o=o||{};
+  var font=o.font||'600 44px system-ui, -apple-system, Segoe UI, sans-serif';
+  var h=o.h||80, pad=o.pad||22;
+  var cv=document.createElement('canvas');
+  var c=cv.getContext('2d'); c.font=font;
+  var w=Math.ceil(Math.max(o.minW||0,c.measureText(text).width+pad*2));
+  cv.width=w; cv.height=h;
+  c=cv.getContext('2d'); c.font=font; c.textBaseline='middle'; c.textAlign='center';
+  if(o.bg){c.fillStyle=o.bg;roundRect(c,1,1,w-2,h-2,(h-2)/2);c.fill();if(o.border){c.lineWidth=3;c.strokeStyle=o.border;c.stroke()}}
+  c.fillStyle=o.color||'#0f1a2b'; c.fillText(text,w/2,h/2+2);
+  var tex=new THREE.CanvasTexture(cv); tex.minFilter=THREE.LinearFilter; tex.generateMipmaps=false;
+  return {tex:tex,aspect:w/h};
+}
+function label(text,height,o){
+  var t=textTexture(text,o);
+  var s=new THREE.Sprite(new THREE.SpriteMaterial({map:t.tex,transparent:true,depthWrite:false}));
+  s.scale.set(height*t.aspect,height,1); s.userData.aspect=t.aspect; return s;
+}
+function shadowTexture(){
+  var cv=document.createElement('canvas'); cv.width=cv.height=256;
+  var c=cv.getContext('2d'); var g=c.createRadialGradient(128,128,4,128,128,126);
+  g.addColorStop(0,'rgba(15,26,43,.20)'); g.addColorStop(.55,'rgba(15,26,43,.07)'); g.addColorStop(1,'rgba(15,26,43,0)');
+  c.fillStyle=g; c.fillRect(0,0,256,256);
+  return new THREE.CanvasTexture(cv);
+}
+function edgeBox(w,h,d,color,opacity){
+  return new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(w,h,d)),new THREE.LineBasicMaterial({color:color,transparent:true,opacity:opacity==null?1:opacity}));
+}
+
+function makeStage(el,o){
+  o=o||{};
+  if(!haveThree){el.classList.add('no-webgl');return null}
+  var renderer;
+  try{renderer=new THREE.WebGLRenderer({antialias:true,alpha:true,powerPreference:'high-performance'})}
+  catch(e){el.classList.add('no-webgl');return null}
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,2));
+  renderer.setClearColor(0xffffff,0);
+  el.insertBefore(renderer.domElement,el.firstChild);
+  var scene=new THREE.Scene();
+  var camera=new THREE.PerspectiveCamera(o.fov||38,1,0.1,200);
+  var look=new THREE.Vector3(o.look?o.look[0]:0,o.look?o.look[1]:0,o.look?o.look[2]:0);
+  var st={el:el,renderer:renderer,scene:scene,camera:camera,visible:false,update:null,look:look};
+  function resize(){
+    var w=el.clientWidth,h=el.clientHeight; if(!w||!h) return;
+    renderer.setSize(w,h,false);
+    camera.aspect=w/h; camera.updateProjectionMatrix();
+    if(o.fit){
+      var th=Math.tan((camera.fov*Math.PI/180)/2);
+      var z=Math.max((o.fit.w/2)/(th*camera.aspect),(o.fit.h/2)/th);
+      camera.position.set(look.x,look.y+z*(o.fit.yr||0.15),z);
+    }else if(o.cam){camera.position.set(o.cam[0],o.cam[1],o.cam[2])}
+    camera.lookAt(look);
+  }
+  if(window.ResizeObserver) new ResizeObserver(resize).observe(el); else window.addEventListener('resize',resize);
+  resize();
+  if(window.IntersectionObserver) new IntersectionObserver(function(es){st.visible=es[0].isIntersecting;if(st.visible&&st.onShow)st.onShow()},{rootMargin:'120px'}).observe(el);
+  else st.visible=true;
+  stages.push(st); return st;
+}
+
+/* pointer-drag rotation with inertia (vertical scrolling stays native) */
+function makeDrag(st,obj,o){
+  o=o||{};
+  var el=st.renderer.domElement, baseX=obj.rotation.x, auto=REDUCE?0:(o.auto||0);
+  var dragging=false,lx=0,ly=0,lt=0,vy=auto,minY=o.minY,maxY=o.maxY;
+  el.addEventListener('pointerdown',function(e){dragging=true;lx=e.clientX;ly=e.clientY;lt=performance.now();try{el.setPointerCapture(e.pointerId)}catch(_){}el.classList.add('grab')});
+  function end(){dragging=false;el.classList.remove('grab')}
+  el.addEventListener('pointerup',end); el.addEventListener('pointercancel',end); el.addEventListener('lostpointercapture',end);
+  el.addEventListener('pointermove',function(e){
+    if(!dragging) return;
+    var now=performance.now(),dt=Math.max((now-lt)/1000,0.008);
+    var dx=e.clientX-lx,dy=e.clientY-ly; lx=e.clientX;ly=e.clientY;lt=now;
+    var dRot=dx*0.007; obj.rotation.y+=dRot;
+    vy=clamp(dRot/dt,-5,5);
+    obj.rotation.x=clamp(obj.rotation.x+dy*0.004,baseX-0.3,baseX+0.3);
+    if(minY!=null) obj.rotation.y=clamp(obj.rotation.y,minY,maxY);
+  });
+  return function(dt){
+    if(dragging) return;
+    vy+=(auto-vy)*Math.min(1,dt*1.6);
+    obj.rotation.y+=vy*dt;
+    if(minY!=null){
+      if(obj.rotation.y<minY||obj.rotation.y>maxY){obj.rotation.y=clamp(obj.rotation.y,minY,maxY);vy=0}
+    }
+    obj.rotation.x+=(baseX-obj.rotation.x)*Math.min(1,dt*0.8);
+  };
+}
+
+var clock=haveThree?new THREE.Clock():null;
+function loop(){
+  requestAnimationFrame(loop);
+  var dt=Math.min(clock.getDelta(),0.05), t=clock.elapsedTime;
+  for(var i=0;i<stages.length;i++){
+    var s=stages[i]; if(!s.visible) continue;
+    if(s.update) s.update(dt,t);
+    s.renderer.render(s.scene,s.camera);
+  }
+}
+
+/* ───────────────────────── HERO: relay network ───────────────────────── */
+function initHero(){
+  var el=$('#hero3d'); var st=makeStage(el,{fov:36,look:[0,0.1,0],fit:{w:12.4,h:8,yr:0.16}}); if(!st) return;
+  var scene=st.scene,camera=st.camera;
+  scene.add(new THREE.AmbientLight(0xffffff,0.92));
+  var key=new THREE.DirectionalLight(0xffffff,0.85); key.position.set(5,9,7); scene.add(key);
+  var fill=new THREE.PointLight(0x2f4bff,0.6,40); fill.position.set(-7,3,-5); scene.add(fill);
+
+  var shadow=new THREE.Mesh(new THREE.PlaneGeometry(14,14),new THREE.MeshBasicMaterial({map:shadowTexture(),transparent:true,depthWrite:false}));
+  shadow.rotation.x=-Math.PI/2; shadow.position.y=-3.2; scene.add(shadow);
+
+  var world=new THREE.Group(); world.rotation.x=0.12; scene.add(world);
+
+  /* relay core */
+  var core=new THREE.Group(); world.add(core);
+  var shell=new THREE.Mesh(new THREE.IcosahedronGeometry(1.15,1),new THREE.MeshStandardMaterial({color:0xffffff,roughness:0.35,metalness:0.05,flatShading:true}));
+  var wire=new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.IcosahedronGeometry(1.17,1)),new THREE.LineBasicMaterial({color:C.voice,transparent:true,opacity:0.6}));
+  var heart=new THREE.Mesh(new THREE.SphereGeometry(0.42,32,32),new THREE.MeshBasicMaterial({color:C.voice}));
+  core.add(shell,wire,heart);
+  var rings=[];
+  for(var i=0;i<3;i++){
+    var r=new THREE.Mesh(new THREE.TorusGeometry(1.75+i*0.4,0.012,8,140),new THREE.MeshBasicMaterial({color:i===1?C.sig:C.voice,transparent:true,opacity:0.5}));
+    r.rotation.x=Math.PI/2+(i-1)*0.4; r.rotation.y=i*0.7; core.add(r); rings.push(r);
+  }
+  var coreLabel=label('VoQuic relay',0.36,{font:'600 40px system-ui, sans-serif',color:'#2f4bff',bg:'#ffffff',border:'#cbd4ff',h:76});
+  coreLabel.position.set(0,-1.9,0); world.add(coreLabel);
+
+  /* clients + links */
+  var names=['CLIENT-A','CLIENT-B','DOCK-3','FRONT-DESK','WARD-2','FIELD-7','LAB-1'];
+  var ys=[0.9,-1.0,1.7,-0.2,-1.6,0.6,1.3];
+  var N=names.length, clients=[];
+  names.forEach(function(n,i){
+    var a=(i/N)*Math.PI*2+0.3, R=4.4;
+    var pos=new THREE.Vector3(Math.cos(a)*R,ys[i],Math.sin(a)*R*0.86);
+    var g=new THREE.Group(); g.position.copy(pos); world.add(g);
+    var bodyGeo=new THREE.BoxGeometry(0.66,1.05,0.13);
+    var body=new THREE.Mesh(bodyGeo,new THREE.MeshStandardMaterial({color:0xffffff,roughness:0.5}));
+    var scr=new THREE.Mesh(new THREE.PlaneGeometry(0.53,0.86),new THREE.MeshBasicMaterial({color:C.idle}));
+    scr.position.z=0.07;
+    var edge=new THREE.LineSegments(new THREE.EdgesGeometry(bodyGeo),new THREE.LineBasicMaterial({color:C.ink,transparent:true,opacity:0.55}));
+    g.add(body,scr,edge);
+    g.lookAt(new THREE.Vector3(0,pos.y*0.3,0));
+    var lab=label(n,0.32,{font:'600 40px system-ui, sans-serif',color:'#3f4f66',h:72});
+    lab.position.set(pos.x,pos.y+0.88,pos.z); world.add(lab);
+    var end=pos.clone().normalize().multiplyScalar(1.22);
+    var mid=pos.clone().add(end).multiplyScalar(0.5); mid.y+=0.9;
+    var curve=new THREE.QuadraticBezierCurve3(pos.clone(),mid,end);
+    var mat=new THREE.MeshBasicMaterial({color:C.line});
+    var tube=new THREE.Mesh(new THREE.TubeGeometry(curve,40,0.014,6,false),mat);
+    world.add(tube);
+    clients.push({g:g,scr:scr,curve:curve,mat:mat,pos:pos});
+  });
+  function setNode(i,linkColor,screenColor){clients[i].mat.color.setHex(linkColor);clients[i].scr.material.color.setHex(screenColor)}
+  function resetNodes(){for(var i=0;i<N;i++)setNode(i,C.line,C.idle)}
+
+  /* packets */
+  var pGeo=new THREE.SphereGeometry(0.078,12,12), hGeo=new THREE.SphereGeometry(0.19,12,12);
+  var packets=[];
+  for(var k=0;k<46;k++){
+    var m=new THREE.Mesh(pGeo,new THREE.MeshBasicMaterial({color:C.voice}));
+    var h=new THREE.Mesh(hGeo,new THREE.MeshBasicMaterial({color:C.voice,transparent:true,opacity:0.2,depthWrite:false}));
+    m.add(h); m.visible=false; world.add(m);
+    packets.push({m:m,h:h,on:false,u:0,speed:1,segs:null});
+  }
+  function spawn(color,segs,speed,u0){
+    var p=null; for(var i=0;i<packets.length;i++){if(!packets[i].on){p=packets[i];break}} if(!p) return;
+    p.on=true; p.u=u0||0; p.speed=speed; p.segs=segs; p.m.visible=true;
+    p.m.material.color.setHex(color); p.h.material.color.setHex(color); place(p);
+  }
+  function place(p){
+    var idx=Math.min(Math.floor(p.u),p.segs.length-1), f=clamp(p.u-idx,0,1), s=p.segs[idx];
+    p.m.position.copy(s.curve.getPoint(s.rev?1-f:f));
+  }
+  function segTo(i){return {curve:clients[i].curve,rev:false}}      /* client -> core */
+  function segFrom(i){return {curve:clients[i].curve,rev:true}}     /* core -> client */
+
+  /* pulses (expanding rings, screen-facing) */
+  var pulses=[];
+  for(var q=0;q<10;q++){
+    var pm=new THREE.Mesh(new THREE.TorusGeometry(1,0.03,6,56),new THREE.MeshBasicMaterial({color:C.voice,transparent:true,opacity:0,depthWrite:false}));
+    pm.visible=false; scene.add(pm); pulses.push({m:pm,on:false,age:0,life:1,max:1});
+  }
+  var tmpV=new THREE.Vector3();
+  function pulse(i,color,max,life){
+    var p=null; for(var a=0;a<pulses.length;a++){if(!pulses[a].on){p=pulses[a];break}} if(!p) return;
+    clients[i].g.getWorldPosition(tmpV); p.m.position.copy(tmpV);
+    p.m.material.color.setHex(color); p.on=true;p.age=0;p.life=life||1.1;p.max=max||0.9;p.m.visible=true;
+  }
+  function pulseCore(color){
+    var p=null; for(var a=0;a<pulses.length;a++){if(!pulses[a].on){p=pulses[a];break}} if(!p) return;
+    core.getWorldPosition(tmpV); p.m.position.copy(tmpV);
+    p.m.material.color.setHex(color); p.on=true;p.age=0;p.life=1.6;p.max=3.6;p.m.visible=true;
+  }
+
+  /* call scheduler */
+  var call=null, wait=0.7, emit=0, wave=0, flip=false;
+  function startCall(){
+    var i=Math.floor(Math.random()*N), j; do{j=Math.floor(Math.random()*N)}while(j===i);
+    call={i:i,j:j,t:0,ph:0};
+    setNode(i,C.sig,0xf7c15a); setNode(j,C.sig,0xf7c15a);
+    spawn(C.sig,[segTo(i),segFrom(j)],0.8);
+    pulse(i,C.sig,0.9,1.2); pulseCore(C.sig);
+  }
+  function activate(){
+    setNode(call.i,C.voice,C.voice); setNode(call.j,C.voice,C.voice); call.ph=2;
+  }
+  function stepCall(dt){
+    if(!call){wait-=dt; if(wait<=0) startCall(); return}
+    call.t+=dt;
+    if(call.ph===0&&call.t>1.5){call.ph=1;spawn(C.sig,[segTo(call.j),segFrom(call.i)],0.9);pulse(call.j,C.sig,0.9,1.2)}
+    if(call.ph===1&&call.t>2.6){activate();pulseCore(C.voice)}
+    if(call.ph===2){
+      emit-=dt; wave-=dt;
+      if(emit<=0){emit=0.15;flip=!flip; spawn(C.voice,flip?[segTo(call.i),segFrom(call.j)]:[segTo(call.j),segFrom(call.i)],0.95)}
+      if(wave<=0){wave=0.75;pulse(call.i,C.voice,0.7,0.9);pulse(call.j,C.voice,0.7,0.9)}
+    }
+    if(call.t>8.4){resetNodes();call=null;wait=1.3}
+  }
+
+  var drag=makeDrag(st,world,{auto:0.12});
+  st.update=function(dt,t){
+    drag(dt);
+    var mv=REDUCE?0:dt;
+    shell.rotation.y+=mv*0.25; wire.rotation.y=shell.rotation.y;
+    rings.forEach(function(r,i){r.rotation.z+=mv*(0.22+i*0.1)});
+    heart.scale.setScalar(1+(call&&call.ph===2&&!REDUCE?0.12*Math.sin(t*9):0));
+    if(!REDUCE) stepCall(dt);
+    for(var i=0;i<packets.length;i++){
+      var p=packets[i]; if(!p.on) continue;
+      p.u+=mv*p.speed;
+      if(p.u>=p.segs.length){p.on=false;p.m.visible=false;continue}
+      place(p);
+    }
+    for(var j=0;j<pulses.length;j++){
+      var pl=pulses[j]; if(!pl.on) continue;
+      pl.age+=mv; var f=pl.age/pl.life;
+      if(f>=1){pl.on=false;pl.m.visible=false;continue}
+      pl.m.scale.setScalar(lerp(0.25,pl.max,ease(f)));
+      pl.m.material.opacity=0.6*(1-f);
+      pl.m.quaternion.copy(camera.quaternion);
+    }
+  };
+
+  if(REDUCE){ /* static, already-in-call snapshot */
+    call={i:0,j:3,t:3,ph:2}; activate();
+    for(var s=0;s<14;s++) spawn(C.voice,s%2?[segTo(0),segFrom(3)]:[segTo(3),segFrom(0)],0,Math.random()*1.99);
+    for(var s2=0;s2<3;s2++) spawn(C.sig,[segTo(1),segFrom(4)],0,Math.random()*1.9);
+  }
+}
+
+/* ───────────────────────── CALL FLOW ───────────────────────── */
+var STEPS=[
+ {msg:'REGISTER',lane:'sig',a:'IDLE',b:'IDLE',title:'Both clients register',text:'Each client opens a WebSocket to /ws. The server answers with the client ID and the QUIC port that client will use for audio.',run:function(f){f.fire('REGISTER','S','A','sig');f.after(320,function(){f.fire('REGISTER','S','B','sig')})}},
+ {msg:'CLIENT_LIST',lane:'sig',a:'IDLE',b:'IDLE',title:'Presence is shared',text:'The server sends the list of online clients and their status, so a caller knows who is available.',run:function(f){f.fire('CLIENT_LIST','S','A','sig');f.after(240,function(){f.fire('CLIENT_LIST','S','B','sig')})}},
+ {msg:'CALL',lane:'sig',a:'IDLE',b:'IDLE',title:'Client A places a call',text:'A names a target ID. This is signaling only. No audio moves yet.',run:function(f){f.fire('CALL','A','S','sig')}},
+ {msg:'CALL_INCOMING',lane:'sig',a:'IDLE',b:'RINGING',title:'Client B is rung',text:'The server tells B who is calling and gives the call an ID. B enters the RINGING state.',run:function(f){f.fire('CALL_INCOMING','S','B','sig')}},
+ {msg:'CALL_ACCEPT',lane:'sig',a:'IDLE',b:'RINGING',title:'B accepts',text:'B answers with CALL_ACCEPT. The alternative is CALL_REJECT, which carries a reason.',run:function(f){f.fire('CALL_ACCEPT','B','S','sig')}},
+ {msg:'QUIC_INFO',lane:'sig',a:'QUIC_CONNECTING',b:'QUIC_CONNECTING',title:'Hand-off to the media lane',text:'The server sends each client the call ID and the QUIC port. Both enter QUIC_CONNECTING.',run:function(f){f.fire('QUIC_INFO','S','A','sig');f.fire('QUIC_INFO','S','B','sig')}},
+ {msg:'CALL_CONNECTED',lane:'sig',a:'VOICE_ACTIVE',b:'VOICE_ACTIVE',title:'Both sides confirm',text:'Each client replies CALL_CONNECTED and moves to VOICE_ACTIVE. Speaking can begin.',run:function(f){f.fire('CALL_CONNECTED','A','S','sig');f.fire('CALL_CONNECTED','B','S','sig')}},
+ {msg:'VOICE DATAGRAMS',lane:'media',a:'VOICE_ACTIVE',b:'VOICE_ACTIVE',title:'Voice flows both ways',text:'Every 20 ms each client sends an Opus frame as a datagram to the relay, which forwards it to the other side. Each packet carries the call ID, sender ID and a sequence number.',run:function(f){f.voice(true,true)}},
+ {msg:'MUTE',lane:'sig',a:'VOICE_ACTIVE',b:'VOICE_ACTIVE',title:'A mutes',text:'A stops sending frames and signals MUTE, so B can show that the silence is intentional. B keeps talking.',run:function(f){f.voice(false,true);f.muteA(true);f.fire('MUTE','A','S','sig',function(){f.fire('MUTE','S','B','sig')})}},
+ {msg:'CALL_END',lane:'sig',a:'IDLE',b:'IDLE',title:'The call ends',text:'Either side sends CALL_END with a reason. The server informs the other party and both return to IDLE.',run:function(f){f.fire('CALL_END','A','S','sig',function(){f.fire('CALL_END','S','B','sig')})}}
+];
+
+function buildStepsUI(onPick){
+  var ol=$('#steps');
+  STEPS.forEach(function(s,i){
+    var li=document.createElement('li'); li.className=s.lane==='media'?'mediadot':'sigdot';
+    var b=document.createElement('button'); b.type='button';
+    b.innerHTML='<span class="n">'+(i+1)+'</span><span class="t">'+s.title+'</span><span class="m">'+(s.lane==='media'?'media':'signal')+'</span>';
+    b.addEventListener('click',function(){onPick(i,true)});
+    li.appendChild(b); ol.appendChild(li);
+  });
+}
+function showStepUI(i){
+  var s=STEPS[i];
+  $$('#steps button').forEach(function(b,k){if(k===i) b.setAttribute('aria-current','step'); else b.removeAttribute('aria-current')});
+  $('#dMsg').textContent=s.msg; $('#dTitle').textContent=s.title; $('#dText').textContent=s.text;
+  $('#dLane').textContent=s.lane==='media'?'Media lane (QUIC datagrams)':'Signaling lane (WebSocket)';
+  $('#detail').className='detail'+(s.lane==='media'?' media':'');
+  var a=$('#dA'),b=$('#dB');
+  a.className='chip '+s.a; a.innerHTML='<b>Client A</b>'+s.a;
+  b.className='chip '+s.b; b.innerHTML='<b>Client B</b>'+s.b;
+}
+
+function initFlow(){
+  var idx=0, playing=!REDUCE, timer=null, started=false;
+  var el=$('#flow3d');
+  var f=null; /* scene api, set below if WebGL works */
+
+  function go(i,user){
+    idx=(i+STEPS.length)%STEPS.length;
+    if(user&&playing){setPlaying(false)}
+    showStepUI(idx);
+    if(f) f.apply(idx);
+  }
+  function setPlaying(p){
+    playing=p; $('#flowPlay').textContent=p?'Pause':'Play';
+    clearInterval(timer); if(p) timer=setInterval(function(){go(idx+1,false)},4200);
+  }
+  buildStepsUI(go);
+  $('#flowPrev').addEventListener('click',function(){go(idx-1,true)});
+  $('#flowNext').addEventListener('click',function(){go(idx+1,true)});
+  $('#flowPlay').addEventListener('click',function(){setPlaying(!playing)});
+  showStepUI(0);
+  $('#flowPlay').textContent=playing?'Pause':'Play';
+
+  var st=makeStage(el,{fov:36,look:[0,0,0],fit:{w:11.6,h:6.6,yr:0.2}});
+  if(!st){ /* no WebGL: still let the list drive the text panel */
+    if(playing){clearInterval(timer);timer=setInterval(function(){go(idx+1,false)},4200)}
+    return;
+  }
+  var scene=st.scene,camera=st.camera;
+  scene.add(new THREE.AmbientLight(0xffffff,0.95));
+  var key=new THREE.DirectionalLight(0xffffff,0.8); key.position.set(4,8,7); scene.add(key);
+
+  var floor=new THREE.Mesh(new THREE.PlaneGeometry(24,9),new THREE.MeshBasicMaterial({map:shadowTexture(),transparent:true,depthWrite:false}));
+  floor.rotation.x=-Math.PI/2; floor.position.y=-1.85; scene.add(floor);
+  var world=new THREE.Group(); scene.add(world);
+
+  var XA=-4.6, XB=4.6, YS=0.95, YM=-0.95;
+
+  /* phones */
+  var PSTATE={IDLE:{c:C.idle,t:'IDLE',bg:'#eef1f6',fg:'#3f4f66'},RINGING:{c:0xf7c15a,t:'RINGING',bg:'#fff2d6',fg:'#7a4d00'},QUIC_CONNECTING:{c:0x9fb2ff,t:'QUIC_CONNECTING',bg:'#eaeeff',fg:'#1f34c4'},VOICE_ACTIVE:{c:C.voice,t:'VOICE_ACTIVE',bg:'#2f4bff',fg:'#ffffff'}};
+  function phone(name,x){
+    var g=new THREE.Group(); g.position.set(x,0,0); world.add(g);
+    var geo=new THREE.BoxGeometry(1.25,2.2,0.18);
+    var body=new THREE.Mesh(geo,new THREE.MeshStandardMaterial({color:0xffffff,roughness:0.5}));
+    var scr=new THREE.Mesh(new THREE.PlaneGeometry(1.05,1.9),new THREE.MeshBasicMaterial({color:C.idle}));
+    scr.position.z=0.1;
+    g.add(body,scr,edgeBox(1.25,2.2,0.18,C.ink,0.55));
+    /* mute badge */
+    var badge=new THREE.Group(); badge.position.set(0,0.1,0.13); badge.visible=false;
+    var disc=new THREE.Mesh(new THREE.CircleGeometry(0.3,32),new THREE.MeshBasicMaterial({color:C.bad}));
+    var bar=new THREE.Mesh(new THREE.BoxGeometry(0.4,0.06,0.01),new THREE.MeshBasicMaterial({color:0xffffff})); bar.rotation.z=Math.PI/4; bar.position.z=0.01;
+    badge.add(disc,bar); g.add(badge);
+    var nm=label(name,0.36,{font:'600 44px system-ui, sans-serif',color:'#0f1a2b',h:80}); nm.position.set(x,-1.62,0.2); world.add(nm);
+    /* state tag (re-drawn on change) */
+    var cv=document.createElement('canvas'); cv.width=420; cv.height=80;
+    var tex=new THREE.CanvasTexture(cv); tex.minFilter=THREE.LinearFilter; tex.generateMipmaps=false;
+    var tag=new THREE.Sprite(new THREE.SpriteMaterial({map:tex,transparent:true,depthWrite:false}));
+    tag.scale.set(2.05,0.39,1); tag.position.set(x,1.52,0.2); world.add(tag);
+    function setState(k){
+      var s=PSTATE[k]; var c=cv.getContext('2d'); c.clearRect(0,0,420,80);
+      c.fillStyle=s.bg; roundRect(c,2,2,416,76,38); c.fill();
+      c.font='600 34px ui-monospace, Menlo, Consolas, monospace'; c.textAlign='center'; c.textBaseline='middle'; c.fillStyle=s.fg; c.fillText(s.t,210,42);
+      tex.needsUpdate=true; scr.material.color.setHex(s.c); g.userData.state=k;
+    }
+    setState('IDLE');
+    return {g:g,scr:scr,setState:setState,badge:badge,x:x};
+  }
+  var A=phone('Client A',XA), B=phone('Client B',XB);
+
+  /* relay slabs */
+  var slabDefs=[{y:YS,t:'WebSocket signaling  /ws',col:C.sig},{y:0,t:'Call manager',col:C.slate},{y:YM,t:'QUIC media relay  :4433',col:C.voice}];
+  var slabs=slabDefs.map(function(d){
+    var mat=new THREE.MeshStandardMaterial({color:0xffffff,roughness:0.55,emissive:d.col,emissiveIntensity:0});
+    var m=new THREE.Mesh(new THREE.BoxGeometry(2.9,0.66,1.5),mat); m.position.y=d.y; world.add(m);
+    var e=edgeBox(2.9,0.66,1.5,C.ink,0.5); e.position.y=d.y; world.add(e);
+    var acc=new THREE.Mesh(new THREE.BoxGeometry(0.1,0.66,1.52),new THREE.MeshBasicMaterial({color:d.col})); acc.position.set(-1.4,d.y,0); world.add(acc);
+    var t=textTexture(d.t,{font:'600 42px system-ui, sans-serif',color:'#0f1a2b',h:76,pad:10});
+    var pl=new THREE.Mesh(new THREE.PlaneGeometry(0.42*t.aspect*0.72,0.42*0.72),new THREE.MeshBasicMaterial({map:t.tex,transparent:true,depthWrite:false}));
+    pl.scale.setScalar(1); pl.position.set(0.05,d.y,0.76); world.add(pl);
+    /* keep label inside slab width */
+    var wd=0.42*t.aspect*0.72; if(wd>2.6){pl.scale.setScalar(2.6/wd)}
+    return {mat:mat,flash:0,col:d.col};
+  });
+  var relayTag=label('VoQuic relay',0.34,{font:'600 40px system-ui, sans-serif',color:'#2f4bff',h:76}); relayTag.position.set(0,-1.62,0.2); world.add(relayTag);
+
+  /* lanes */
+  function rod(x0,x1,y,col){
+    var m=new THREE.Mesh(new THREE.BoxGeometry(Math.abs(x1-x0),0.04,0.04),new THREE.MeshBasicMaterial({color:col,transparent:true,opacity:1}));
+    m.position.set((x0+x1)/2,y,0); world.add(m); return m;
+  }
+  var lanes={sig:[rod(-3.98,-1.45,YS,C.sig),rod(1.45,3.98,YS,C.sig)],media:[rod(-3.98,-1.45,YM,C.voice),rod(1.45,3.98,YM,C.voice)]};
+  var l1=label('signaling (WebSocket)',0.27,{font:'500 38px system-ui, sans-serif',color:'#08694f',h:70,pad:8}); l1.position.set(-2.72,YS+0.3,0.1); world.add(l1);
+  var l2=label('voice (QUIC datagrams)',0.27,{font:'500 38px system-ui, sans-serif',color:'#1f34c4',h:70,pad:8}); l2.position.set(-2.72,YM-0.3,0.1); world.add(l2);
+  var l1b=label('signaling',0.25,{font:'500 38px system-ui, sans-serif',color:'#08694f',h:70,pad:8}); l1b.position.set(2.72,YS+0.3,0.1); world.add(l1b);
+  var l2b=label('voice',0.25,{font:'500 38px system-ui, sans-serif',color:'#1f34c4',h:70,pad:8}); l2b.position.set(2.72,YM-0.3,0.1); world.add(l2b);
+  function glowLane(which){
+    ['sig','media'].forEach(function(k){lanes[k].forEach(function(m){m.material.opacity=(which===k)?1:0.3;m.scale.y=m.scale.z=(which===k)?1.6:1})});
+  }
+
+  /* message envelopes */
+  var envGeo=new THREE.BoxGeometry(0.34,0.22,0.06), dgGeo=new THREE.BoxGeometry(0.17,0.11,0.04);
+  var labelCache={};
+  function labelFor(text,hex){
+    var k=text; if(labelCache[k]) return labelCache[k];
+    var t=textTexture(text,{font:'600 40px ui-monospace, Menlo, Consolas, monospace',color:'#ffffff',bg:hex,h:66,pad:18});
+    labelCache[k]=t; return t;
+  }
+  var pool=[];
+  for(var i=0;i<34;i++){
+    var box=new THREE.Mesh(envGeo,new THREE.MeshStandardMaterial({color:C.sig,roughness:0.4}));
+    var sp=new THREE.Sprite(new THREE.SpriteMaterial({transparent:true,depthWrite:false})); sp.position.y=0.34;
+    var grp=new THREE.Group(); grp.add(box,sp); grp.visible=false; world.add(grp);
+    pool.push({g:grp,box:box,sp:sp,on:false,t:0,dur:1,x0:0,x1:0,y:0,z:0,cb:null,kind:'msg'});
+  }
+  function sx(from,to){
+    if(from==='S') return to==='A'?-1.4:1.4;
+    return from==='A'?-3.98:3.98;
+  }
+  function ex(from,to){
+    if(to==='S') return from==='A'?-1.4:1.4;
+    return to==='A'?-3.98:3.98;
+  }
+  function slabIndex(lane){return lane==='sig'?0:2}
+  function fire(text,from,to,lane,cb,o){
+    o=o||{};
+    var p=null; for(var i=0;i<pool.length;i++){if(!pool[i].on){p=pool[i];break}} if(!p) return;
+    var col=lane==='sig'?C.sig:C.voice, hex=lane==='sig'?'#0e9f7e':'#2f4bff';
+    p.on=true;p.t=0;p.dur=o.dur||1.0;p.cb=cb||null;p.kind=o.kind||'msg';
+    p.x0=sx(from,to);p.x1=ex(from,to);p.y=lane==='sig'?YS:YM;p.z=p.x1>p.x0?0.14:-0.14;p.lane=lane;
+    p.box.geometry=p.kind==='dg'?dgGeo:envGeo;
+    p.box.material.color.setHex(col);
+    if(p.kind==='dg'||!text){p.sp.visible=false}
+    else{var t=labelFor(text,hex);p.sp.material.map=t.tex;p.sp.material.needsUpdate=true;p.sp.scale.set(0.3*t.aspect,0.3,1);p.sp.visible=true}
+    p.g.visible=true;p.g.position.set(p.x0,p.y,p.z);
+    p.toServer=(to==='S');p.slab=slabIndex(lane);
+  }
+
+  /* timers + voice emitter */
+  var timers=[];
+  function after(ms,fn){timers.push(setTimeout(fn,ms))}
+  function clearTimers(){timers.forEach(clearTimeout);timers=[]}
+  var voiceA=false,voiceB=false,vAcc=0,vFlip=false;
+  var api={fire:fire,after:after,
+    voice:function(a,b){voiceA=a;voiceB=b;vAcc=0},
+    muteA:function(m){A.badge.visible=m}
+  };
+
+  var applied=-1;
+  function apply(i){
+    applied=i; clearTimers();
+    pool.forEach(function(p){p.on=false;p.g.visible=false;p.cb=null});
+    voiceA=voiceB=false; A.badge.visible=false;
+    var s=STEPS[i];
+    A.setState(s.a); B.setState(s.b);
+    glowLane(s.lane);
+    s.run(api);
+  }
+  f={apply:apply};
+
+  var drag=makeDrag(st,world,{auto:0,minY:-0.55,maxY:0.55});
+  st.update=function(dt,t){
+    drag(dt);
+    /* voice emitter */
+    if(voiceA||voiceB){
+      vAcc+=dt;
+      if(vAcc>=0.17){
+        vAcc=0; vFlip=!vFlip;
+        var fromA=vFlip;
+        if(fromA&&voiceA){fire('','A','S','media',function(){fire('','S','B','media',null,{kind:'dg',dur:0.6})},{kind:'dg',dur:0.6})}
+        else if(!fromA&&voiceB){fire('','B','S','media',function(){fire('','S','A','media',null,{kind:'dg',dur:0.6})},{kind:'dg',dur:0.6})}
+      }
+    }
+    /* move envelopes */
+    for(var i=0;i<pool.length;i++){
+      var p=pool[i]; if(!p.on) continue;
+      p.t+=dt/p.dur; var e=ease(clamp(p.t,0,1));
+      p.g.position.x=lerp(p.x0,p.x1,e);
+      p.g.position.y=p.y+Math.sin(Math.PI*e)*0.12;
+      p.g.position.z=p.z;
+      if(p.t>=1){
+        p.on=false;p.g.visible=false;
+        if(p.toServer) slabs[p.slab].flash=1;
+        var cb=p.cb;p.cb=null;if(cb) cb();
+      }
+    }
+    /* slab flash decay */
+    for(var k=0;k<slabs.length;k++){var sl=slabs[k]; if(sl.flash>0){sl.flash=Math.max(0,sl.flash-dt*2.2);sl.mat.emissiveIntensity=sl.flash*0.55}}
+    /* ringing wobble + live glow */
+    var ringing=(B.g.userData.state==='RINGING');
+    B.g.rotation.z=ringing&&!REDUCE?Math.sin(t*22)*0.05:0;
+    A.g.rotation.z=(A.g.userData.state==='RINGING'&&!REDUCE)?Math.sin(t*22)*0.05:0;
+  };
+
+  /* start automatically once first visible (unless reduced motion) */
+  st.onShow=function(){
+    if(started) return; started=true;
+    apply(idx);
+    if(playing) setPlaying(true);
+  };
+  if(st.visible&&!started) st.onShow();
+}
+
+/* ───────────────────────── JITTER LAB ───────────────────────── */
+function initLab(){
+  var el=$('#lab3d');
+  var FRAME=20, BASE=30;
+  var jitter=40, loss=8, depth=3, speed=0.08, running=!REDUCE;
+  var elJit=$('#rJit'),elLoss=$('#rLoss'),elDepth=$('#rDepth'),elSpeed=$('#rSpeed');
+
+  var st=makeStage(el,{fov:36,look:[0.6,0.1,0],fit:{w:16.2,h:5.4,yr:0.34}});
+  var reset=function(){};
+  if(st){
+    var scene=st.scene;
+    scene.add(new THREE.AmbientLight(0xffffff,0.95));
+    var key=new THREE.DirectionalLight(0xffffff,0.8); key.position.set(3,8,6); scene.add(key);
+    var world=new THREE.Group(); scene.add(world);
+
+    var X_SEND=-6.6,X_ENTRY=-3.0,HEAD=2.7,SP=0.56,SLOTS=10,X_OUT=5.8;
+    var trayW=SLOTS*SP+0.3;
+    var tray=new THREE.Mesh(new THREE.BoxGeometry(trayW,0.1,1.1),new THREE.MeshStandardMaterial({color:0xf5f7fb,roughness:0.7}));
+    tray.position.set(HEAD-(SLOTS-1)*SP/2,-0.42,0); world.add(tray);
+    var trayEdge=edgeBox(trayW,0.1,1.1,C.line,1); trayEdge.position.copy(tray.position); world.add(trayEdge);
+    for(var i=0;i<SLOTS;i++){var so=edgeBox(0.5,0.5,0.5,C.line,0.9);so.position.set(HEAD-i*SP,0,0);world.add(so)}
+    var netZone=new THREE.Mesh(new THREE.BoxGeometry(X_ENTRY-X_SEND-0.6,0.06,2.6),new THREE.MeshStandardMaterial({color:0xf5f7fb,roughness:0.8}));
+    netZone.position.set((X_SEND+X_ENTRY)/2+0.1,-0.42,0); world.add(netZone);
+    var pad=new THREE.Mesh(new THREE.BoxGeometry(1.1,0.1,1.1),new THREE.MeshStandardMaterial({color:0xffffff,roughness:0.6}));
+    pad.position.set(X_SEND,-0.42,0); world.add(pad); var padE=edgeBox(1.1,0.1,1.1,C.ink,0.5); padE.position.copy(pad.position); world.add(padE);
+    var spk=new THREE.Mesh(new THREE.CylinderGeometry(0.62,0.62,0.1,32),new THREE.MeshStandardMaterial({color:0xffffff,roughness:0.6}));
+    spk.position.set(X_OUT,-0.42,0); world.add(spk);
+    var spkR=new THREE.Mesh(new THREE.TorusGeometry(0.62,0.02,8,48),new THREE.MeshBasicMaterial({color:C.voice})); spkR.rotation.x=Math.PI/2; spkR.position.set(X_OUT,-0.36,0); world.add(spkR);
+
+    var L=function(t,x,y,col,h){var s=label(t,h||0.3,{font:'600 40px system-ui, sans-serif',color:col||'#3f4f66',h:72,pad:10});s.position.set(x,y,0);world.add(s);return s};
+    L('Sender: 1 frame / 20 ms',X_SEND,-1.05,'#0f1a2b');
+    L('Network: delay, reorder, loss',(X_SEND+X_ENTRY)/2+0.1,-1.05,'#3f4f66');
+    L('Jitter buffer',HEAD-(SLOTS-1)*SP/2,-1.05,'#2f4bff');
+    L('Playout',X_OUT,-1.05,'#0f1a2b');
+    var headTag=L('next to play',HEAD,1.02,'#3f4f66',0.26);
+
+    var headMat=new THREE.LineBasicMaterial({color:C.ink,transparent:true,opacity:0.9});
+    var headBox=new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(0.62,0.62,0.62)),headMat);
+    headBox.position.set(HEAD,0,0); world.add(headBox);
+    var headFlash=0,headCol=C.voice;
+
+    var boxGeo=new THREE.BoxGeometry(0.46,0.46,0.46);
+    var numCache={};
+    function numTex(n){
+      if(!numCache[n]) numCache[n]=textTexture(String(n),{font:'700 54px system-ui, sans-serif',color:'#0f1a2b',h:76,pad:10});
+      return numCache[n];
+    }
+    var plcTex=textTexture('PLC',{font:'700 50px system-ui, sans-serif',color:'#7a4d00',h:76,pad:10});
+
+    var pk=[],bufMap={},simT=0,nextSeq=0,nextSendT=0,playSeq=0;
+    var S={played:0,plc:0,late:0,lost:0};
+
+    function playT(seq){return BASE+depth*FRAME+seq*FRAME}
+    function mk(seq,color,opacity,tex){
+      var mat=new THREE.MeshStandardMaterial({color:color,roughness:0.4,transparent:true,opacity:opacity});
+      var mesh=new THREE.Mesh(boxGeo,mat);
+      var t=tex||numTex(seq%100);
+      var sp=new THREE.Sprite(new THREE.SpriteMaterial({map:t.tex,transparent:true,depthWrite:false,opacity:opacity}));
+      sp.scale.set(0.3*t.aspect,0.3,1); sp.position.y=0.42; mesh.add(sp);
+      world.add(mesh); return {mesh:mesh,mat:mat,sp:sp};
+    }
+    function kill(p){world.remove(p.mesh);p.mat.dispose();p.sp.material.dispose()}
+    function clearAll(){pk.forEach(kill);pk=[];bufMap={}}
+
+    reset=function(){
+      clearAll(); simT=0;nextSeq=0;nextSendT=0;playSeq=0;S.played=S.plc=S.late=S.lost=0;headFlash=0;
+      renderStats(true);
+    };
+
+    function send(){
+      var lost=Math.random()*100<loss;
+      var delay=BASE+Math.random()*jitter;
+      var m=mk(nextSeq,C.voiceLight,1);
+      m.mesh.position.set(X_SEND,0.3,0);
+      pk.push({seq:nextSeq,sendT:nextSendT,arrT:nextSendT+delay,lost:lost,st:'flight',age:0,z:(Math.random()-0.5)*1.5,arc:0.5+Math.random()*0.7,mesh:m.mesh,mat:m.mat,sp:m.sp});
+      nextSeq++;nextSendT+=FRAME;
+    }
+    function doPlay(seq){
+      var p=bufMap[seq];
+      headFlash=1;
+      if(p){
+        delete bufMap[seq]; p.st='played'; p.age=0; p.mat.color.setHex(C.voice); S.played++; headCol=C.voice;
+      }else{
+        var g=mk(seq,C.plc,0.8,plcTex); g.mesh.position.set(HEAD,0,0);
+        pk.push({seq:seq,st:'plc',age:0,mesh:g.mesh,mat:g.mat,sp:g.sp,z:0}); S.plc++; headCol=C.plc;
+      }
+    }
+
+    function stepPk(p,dt){
+      var m=p.mesh;
+      if(p.st==='flight'){
+        var prog=clamp((simT-p.sendT)/(p.arrT-p.sendT),0,1);
+        if(p.lost&&prog>=0.55){p.st='lost';p.age=0;p.mat.color.setHex(C.bad);S.lost++;return}
+        m.position.x=lerp(X_SEND,X_ENTRY,prog);
+        m.position.y=0.3+Math.sin(prog*Math.PI)*p.arc;
+        m.position.z=p.z*(1-prog*0.85);
+        m.rotation.y=prog*2.2;
+        if(!p.lost&&simT>=p.arrT){
+          m.rotation.y=0;
+          if(p.seq>=playSeq){p.st='buffer';bufMap[p.seq]=p}
+          else{p.st='late';p.age=0;p.mat.color.setHex(C.bad);S.late++}
+        }
+      }else if(p.st==='buffer'){
+        var i=clamp(p.seq-playSeq,0,SLOTS-1);
+        var k=1-Math.exp(-dt*10);
+        m.position.x+=(HEAD-i*SP-m.position.x)*k;
+        m.position.y+=(0-m.position.y)*k;
+        m.position.z+=(0-m.position.z)*k;
+      }else if(p.st==='played'||p.st==='plc'){
+        p.age+=dt; var e=p.age/0.6;
+        m.position.x=lerp(HEAD,X_OUT,ease(clamp(e,0,1)));
+        m.position.y=0.25*Math.sin(clamp(e,0,1)*Math.PI);
+        m.position.z=0;
+        var o=(p.st==='plc'?0.8:1)*(1-clamp(e,0,1)); p.mat.opacity=o; p.sp.material.opacity=o;
+        if(e>=1) p.dead=true;
+      }else if(p.st==='late'||p.st==='lost'){
+        p.age+=dt; var e2=p.age/0.7;
+        m.position.y-=dt*2.4; m.rotation.z+=dt*2;
+        p.mat.opacity=1-clamp(e2,0,1); p.sp.material.opacity=p.mat.opacity;
+        if(e2>=1) p.dead=true;
+      }
+    }
+
+    var uiT=0;
+    st.update=function(dt){
+      drag(dt);
+      if(running){
+        simT+=dt*1000*speed;
+        while(nextSendT<=simT) send();
+        while(simT>=playT(playSeq)){doPlay(playSeq);playSeq++}
+      }
+      var live=[];
+      for(var i=0;i<pk.length;i++){
+        var p=pk[i];
+        stepPk(p,running||p.st==='played'||p.st==='plc'||p.st==='late'||p.st==='lost'?dt:0);
+        if(p.dead) kill(p); else live.push(p);
+      }
+      pk=live;
+      if(headFlash>0){headFlash=Math.max(0,headFlash-dt*4);headBox.scale.setScalar(1+0.18*headFlash);headMat.color.setHex(headFlash>0.05?headCol:C.ink)}
+      uiT+=dt; if(uiT>0.2){uiT=0;renderStats()}
+    };
+    var drag=makeDrag(st,world,{auto:0,minY:-0.35,maxY:0.35});
+
+    var lastStats='';
+    var renderStats=function(force){
+      var s=S.played+'|'+S.plc+'|'+S.late+'|'+S.lost;
+      if(!force&&s===lastStats) return; lastStats=s;
+      $('#stPlayed').textContent=S.played;$('#stPlc').textContent=S.plc;$('#stLate').textContent=S.late;$('#stLost').textContent=S.lost;
+    };
+    /* keep pause state after tab switch etc. */
+    st.getRunning=function(){return running};
+  }
+
+  function note(){
+    var cover=depth*FRAME;
+    var msg=(jitter<=cover)
+      ?'A buffer of '+depth+' frames absorbs up to '+cover+' ms of jitter, so the '+jitter+' ms of arrival swing in this setting is hidden from the listener.'
+      :'Jitter of '+jitter+' ms is larger than the '+cover+' ms the buffer can absorb. Frames that show up after their turn are discarded and concealed. Deepen the buffer to fix it.';
+    if(loss>0) msg+=' Roughly '+loss+' in every 100 frames never arrive, and each gap is filled by loss concealment.';
+    msg+=' The price of a deeper buffer is delay: this setting adds '+cover+' ms before speech is played.';
+    $('#labNote').textContent=msg;
+  }
+  function labels(){
+    $('#oJit').textContent=jitter+' ms'; $('#oLoss').textContent=loss+' %';
+    $('#oDepth').textContent=depth+(depth===1?' frame':' frames')+' ('+(depth*FRAME)+' ms)';
+    $('#oSpeed').textContent=Math.round(speed*100)+' % of real time';
+    note();
+  }
+  elJit.addEventListener('input',function(){jitter=+elJit.value;labels()});
+  elLoss.addEventListener('input',function(){loss=+elLoss.value;labels()});
+  elDepth.addEventListener('input',function(){depth=+elDepth.value;labels();reset()});
+  elSpeed.addEventListener('input',function(){speed=+elSpeed.value/100;labels()});
+  $('#labPlay').addEventListener('click',function(){running=!running;$('#labPlay').textContent=running?'Pause':'Play'});
+  $('#labReset').addEventListener('click',function(){reset()});
+  $('#labPlay').textContent=running?'Pause':'Play';
+  labels();
+}
+
+/* ───────────────────────── feature tilt (hover devices only) ───────────────────────── */
+function initTilt(){
+  if(!HOVER||REDUCE) return;
+  $$('.feat').forEach(function(card){
+    card.addEventListener('pointermove',function(e){
+      var r=card.getBoundingClientRect();
+      var px=(e.clientX-r.left)/r.width-0.5, py=(e.clientY-r.top)/r.height-0.5;
+      card.style.setProperty('--ry',(px*7).toFixed(2)+'deg');
+      card.style.setProperty('--rx',(-py*7).toFixed(2)+'deg');
+      card.classList.add('lift');
+    });
+    card.addEventListener('pointerleave',function(){card.style.setProperty('--rx','0deg');card.style.setProperty('--ry','0deg');card.classList.remove('lift')});
+  });
+}
+
+/* ───────────────────────── packet anatomy (CSS 3D) ───────────────────────── */
+function initAnatomy(){
+  var stage=$('#anatStage'),rig=$('#rig'),gap=$('#rGap');
+  var DEF={rx:56,rz:-24}, rx=DEF.rx, rz=DEF.rz;
+  function paint(){rig.style.setProperty('--rx',rx+'deg');rig.style.setProperty('--rz',rz+'deg');rig.style.setProperty('--gap',gap.value+'px')}
+  gap.addEventListener('input',paint);
+  var drag=false,lx=0,ly=0;
+  stage.addEventListener('pointerdown',function(e){if(e.target===gap||e.target.tagName==='BUTTON')return;drag=true;lx=e.clientX;ly=e.clientY;stage.classList.add('grab');try{stage.setPointerCapture(e.pointerId)}catch(_){}});
+  function end(){drag=false;stage.classList.remove('grab')}
+  stage.addEventListener('pointerup',end);stage.addEventListener('pointercancel',end);
+  stage.addEventListener('pointermove',function(e){
+    if(!drag) return;
+    rz+=(e.clientX-lx)*0.45; rx=clamp(rx-(e.clientY-ly)*0.35,15,80); lx=e.clientX;ly=e.clientY; paint();
+  });
+  $('#anatReset').addEventListener('click',function(){rx=DEF.rx;rz=DEF.rz;gap.value=70;paint()});
+  $$('.anat-list li').forEach(function(li){
+    var v=li.getAttribute('data-layer');
+    function on(){stage.setAttribute('data-focus',v)} function off(){stage.setAttribute('data-focus','')}
+    li.addEventListener('mouseenter',on);li.addEventListener('mouseleave',off);li.addEventListener('focus',on);li.addEventListener('blur',off);
+  });
+  paint();
+}
+
+/* ───────────────────────── use cases ───────────────────────── */
+var USE=[
+ {n:'Warehouse and factory intercom',need:'Instant voice between docks, floor supervisors and the office, even when the internet link is down.',fit:'Runs on a box inside the site. Devices join under fixed names like DOCK-3, and both signaling and audio stay on the local network.',add:'Rugged handset clients and a paging group for all-stations announcements.'},
+ {n:'Hospitals and campuses',need:'Staff-to-staff calling where voice must not leave the building.',fit:'Self-hosted, with presence so staff can see who is available and reject-with-reason so a declined call is explicit. HTTPS mode is one flag.',add:'Authentication, encryption per call and audit logs that your compliance team requires.'},
+ {n:'Support desks',need:'Click-to-call between customers or colleagues and an agent, with cost that does not rise with every seat.',fit:'The web UI and JSON messages map cleanly onto agent workflows: call, accept, reject, end, mute.',add:'Queues, routing, recording and a CRM hook.'},
+ {n:'Field and mobile teams',need:'Voice that copes with weak Wi-Fi and cellular links.',fit:'Datagram media, a jitter buffer and loss concealment are built to hide packet loss, and QUIC is designed to handle network changes.',add:'A publicly reachable relay address and sign-in.'},
+ {n:'Private consultations',need:'One-to-one voice for sensitive conversations, with control over where the data goes.',fit:'No third-party media relay. HTTPS mode is included, and the server runs in the region of your choice.',add:'End-to-end keys, consent capture and retention rules.'},
+ {n:'Calling inside your own product',need:'Add voice to an application without adopting a whole platform.',fit:'A small FastAPI codebase, typed messages and a Python client to copy from. Four dependencies keep the footprint low.',add:'SDKs for web and mobile, token auth and usage metrics.'}
+];
+function initUseCases(){
+  var tabs=$('#ucTabs'),panel=$('#ucPanel'),btns=[];
+  function show(i){
+    btns.forEach(function(b,k){b.setAttribute('aria-selected',k===i?'true':'false');b.tabIndex=k===i?0:-1});
+    var u=USE[i];
+    panel.innerHTML='<h3>'+u.n+'</h3><div class="uc-cols"><div class="a"><h4>The need</h4><p>'+u.need+'</p></div><div class="b"><h4>How VoQuic answers</h4><p>'+u.fit+'</p></div><div class="c"><h4>Add for production</h4><p>'+u.add+'</p></div></div>';
+  }
+  USE.forEach(function(u,i){
+    var b=document.createElement('button');b.type='button';b.setAttribute('role','tab');b.textContent=u.n;
+    b.addEventListener('click',function(){show(i)});
+    b.addEventListener('keydown',function(e){
+      var d=(e.key==='ArrowDown'||e.key==='ArrowRight')?1:(e.key==='ArrowUp'||e.key==='ArrowLeft')?-1:0;
+      if(d){e.preventDefault();var n=(i+d+USE.length)%USE.length;show(n);btns[n].focus()}
+    });
+    tabs.appendChild(b);btns.push(b);
+  });
+  show(0);
+}
+
+/* ───────────────────────── cost explorer ───────────────────────── */
+function initCalc(){
+  var seats=$('#rSeats'),price=$('#rPrice'),srv=$('#rSrv'),ops=$('#rOps');
+  var usd=function(n){return '$'+Math.round(n).toLocaleString('en-US')};
+  function calc(){
+    var s=+seats.value,p=+price.value,v=+srv.value,o=+ops.value;
+    $('#oSeats').textContent=s;$('#oPrice').textContent=usd(p);$('#oSrv').textContent=usd(v);$('#oOps').textContent=usd(o);
+    var hosted=s*p*12, self=(v+o)*12, max=Math.max(hosted,self,1);
+    $('#cHosted').textContent=usd(hosted);$('#cSelf').textContent=usd(self);
+    $('#fHosted').style.width=(hosted/max*100)+'%';$('#fSelf').style.width=(self/max*100)+'%';
+    var monthlyFixed=v+o, be=p>0?Math.ceil(monthlyFixed/p):Infinity;
+    var vd=$('#cVerdict');
+    if(hosted>self) vd.innerHTML='At '+s+' people, self-hosting is <strong>'+usd(hosted-self)+' a year cheaper</strong>. It becomes the cheaper option above roughly <strong>'+be+' people</strong> at these prices.';
+    else if(hosted<self) vd.innerHTML='At '+s+' people, a hosted service is <strong>'+usd(self-hosted)+' a year cheaper</strong>. Self-hosting starts to win above roughly <strong>'+be+' people</strong> at these prices.';
+    else vd.innerHTML='At these numbers the two options cost the same.';
+  }
+  [seats,price,srv,ops].forEach(function(r){r.addEventListener('input',calc)});
+  calc();
+}
+
+/* ───────────────────────── copy buttons ───────────────────────── */
+function initCopy(){
+  $$('.code .copy').forEach(function(b){
+    b.addEventListener('click',function(){
+      var text=b.parentNode.querySelector('pre').innerText;
+      function done(){b.textContent='Copied';setTimeout(function(){b.textContent='Copy'},1600)}
+      function fallback(){var ta=document.createElement('textarea');ta.value=text;ta.style.position='fixed';ta.style.opacity='0';document.body.appendChild(ta);ta.select();try{document.execCommand('copy');done()}catch(e){}document.body.removeChild(ta)}
+      if(navigator.clipboard&&navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done,fallback); else fallback();
+    });
+  });
+}
+
+/* ───────────────────────── boot ───────────────────────── */
+safe(initUseCases,'use cases');
+safe(initCalc,'calc');
+safe(initCopy,'copy');
+safe(initTilt,'tilt');
+safe(initAnatomy,'anatomy');
+if(haveThree){
+  safe(initHero,'hero');
+  safe(initFlow,'flow');
+  safe(initLab,'lab');
+  loop();
+}else{
+  /* CDN blocked: keep the non-3D parts usable */
+  ['#hero3d','#flow3d','#lab3d'].forEach(function(s){$(s).classList.add('no-webgl')});
+  safe(function(){
+    buildStepsUI(function(i){showStepUI(i)});showStepUI(0);
+    $('#flowPrev').style.display=$('#flowNext').style.display=$('#flowPlay').style.display='none';
+    /* lab controls still update labels */
+  },'flow fallback');
+  safe(initLab,'lab fallback');
+}
+})();
+</script>
+</body>
+</html>
