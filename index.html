@@ -158,6 +158,7 @@ code,kbd,pre{font-family:var(--mono)}
 /* ───────── lab ───────── */
 .lab{display:grid;grid-template-columns:minmax(0,1fr);gap:18px}
 #lab3d{height:clamp(300px,36vw,420px)}
+@media (max-width:700px){#lab3d{height:340px}}
 .lab-panel{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:clamp(18px,3vw,40px);background:var(--surface);border-radius:18px;padding:clamp(18px,2.6vw,30px)}
 .ctrl{display:grid;gap:16px}
 .ctrl label{display:grid;gap:6px;font-weight:500;font-size:.95rem}
@@ -225,23 +226,6 @@ input[type=range]{width:100%;accent-color:var(--voice);height:28px;margin:0}
 .score p{font-size:.94rem;color:var(--ink-2);line-height:1.5}
 @media (max-width:960px){.score{grid-template-columns:1fr 1fr}.score div{border-left:0;border-top:1px solid var(--line);padding-left:0}.score div:nth-child(-n+2){border-top:0}}
 @media (max-width:560px){.score{grid-template-columns:1fr}.score div:nth-child(2){border-top:1px solid var(--line)}}
-
-.calc{margin-top:clamp(48px,6vw,84px);display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.1fr);gap:clamp(20px,4vw,56px);background:var(--surface);border-radius:20px;padding:clamp(22px,3.4vw,44px);align-items:center}
-.calc h3{font-size:clamp(1.5rem,2.6vw,2.1rem);margin-bottom:10px}
-.calc .hint{color:var(--ink-2);font-size:.98rem;margin-bottom:20px}
-.calc .ctrl label span{align-items:baseline}
-.bars{display:grid;gap:18px}
-.bar{display:grid;gap:6px}
-.bar .lbl{display:flex;justify-content:space-between;font-weight:500;font-size:.95rem}
-.bar .lbl b{font-family:var(--display);font-size:1.4rem;font-weight:600}
-.bar .track{height:16px;background:#fff;border-radius:8px;overflow:hidden;border:1px solid var(--line)}
-.bar .fill{height:100%;border-radius:8px;transition:width .3s ease-out;width:0}
-.bar.hosted .fill{background:var(--slate)}
-.bar.self .fill{background:var(--voice)}
-.verdict{margin-top:6px;padding:14px 16px;background:#fff;border:1px solid var(--line);border-radius:12px;font-size:.98rem;color:var(--ink-2)}
-.verdict strong{color:var(--ink)}
-.fine{font-size:.85rem;color:var(--ink-3);margin-top:10px}
-@media (max-width:900px){.calc{grid-template-columns:1fr}}
 
 /* ───────── why quic table ───────── */
 .tbl-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:14px}
@@ -337,7 +321,7 @@ footer p{max-width:60ch}
       <article>
         <h3>Cost follows hardware</h3>
         <p>Hosted voice is billed per seat or per minute. VoQuic runs on a machine you already have, so the bill tracks the server, not the headcount.</p>
-        <span class="k">Try the cost explorer below</span>
+        <span class="k">One server, sized to your call volume</span>
       </article>
       <article>
         <h3>Calls stay on your network</h3>
@@ -526,23 +510,6 @@ footer p{max-width:60ch}
       <div><h4>Low operating burden</h4><p>Four dependencies, one launch command and environment-based configuration.</p></div>
       <div><h4>Yours to extend</h4><p>Plain Python and typed JSON messages that your own engineers can read and change.</p></div>
     </div>
-
-    <div class="calc">
-      <div>
-        <h3>Cost explorer</h3>
-        <p class="hint">Enter your own numbers. The defaults are placeholders, not benchmarks.</p>
-        <div class="ctrl">
-        </div>
-      </div>
-      <div>
-        <div class="bars">
-          <div class="bar hosted"><div class="lbl"><span>Hosted platform, per year</span><b id="cHosted">$0</b></div><div class="track"><div class="fill" id="fHosted"></div></div></div>
-          <div class="bar self"><div class="lbl"><span>Self-hosted VoQuic, per year</span><b id="cSelf">$0</b></div><div class="track"><div class="fill" id="fSelf"></div></div></div>
-        </div>
-        <div class="verdict" id="cVerdict"></div>
-        <p class="fine">Illustrative arithmetic only. It ignores one-time setup, hardware refresh and the production additions listed further down.</p>
-      </div>
-    </div>
   </div>
 </section>
 
@@ -710,7 +677,8 @@ function makeStage(el,o){
     camera.aspect=w/h; camera.updateProjectionMatrix();
     if(o.fit){
       var th=Math.tan((camera.fov*Math.PI/180)/2);
-      var z=Math.max((o.fit.w/2)/(th*camera.aspect),(o.fit.h/2)/th);
+      var fw=(camera.aspect<1.3&&o.fit.wn)?o.fit.wn:o.fit.w;
+      var z=Math.max((fw/2)/(th*camera.aspect),(o.fit.h/2)/th);
       camera.position.set(look.x,look.y+z*(o.fit.yr||0.15),z);
     }else if(o.cam){camera.position.set(o.cam[0],o.cam[1],o.cam[2])}
     camera.lookAt(look);
@@ -1154,7 +1122,7 @@ function initLab(){
   var jitter=40, loss=8, depth=3, speed=0.08, running=!REDUCE;
   var elJit=$('#rJit'),elLoss=$('#rLoss'),elDepth=$('#rDepth'),elSpeed=$('#rSpeed');
 
-  var st=makeStage(el,{fov:36,look:[0.6,0.1,0],fit:{w:16.2,h:5.4,yr:0.34}});
+  var st=makeStage(el,{fov:36,look:[0.6,0.1,0],fit:{w:16.2,wn:12.5,h:5.4,yr:0.34}});
   var reset=function(){};
   if(st){
     var scene=st.scene;
@@ -1391,26 +1359,6 @@ function initUseCases(){
   show(0);
 }
 
-/* ───────────────────────── cost explorer ───────────────────────── */
-function initCalc(){
-  var seats=$('#rSeats'),price=$('#rPrice'),srv=$('#rSrv'),ops=$('#rOps');
-  var usd=function(n){return '$'+Math.round(n).toLocaleString('en-US')};
-  function calc(){
-    var s=+seats.value,p=+price.value,v=+srv.value,o=+ops.value;
-    $('#oSeats').textContent=s;$('#oPrice').textContent=usd(p);$('#oSrv').textContent=usd(v);$('#oOps').textContent=usd(o);
-    var hosted=s*p*12, self=(v+o)*12, max=Math.max(hosted,self,1);
-    $('#cHosted').textContent=usd(hosted);$('#cSelf').textContent=usd(self);
-    $('#fHosted').style.width=(hosted/max*100)+'%';$('#fSelf').style.width=(self/max*100)+'%';
-    var monthlyFixed=v+o, be=p>0?Math.ceil(monthlyFixed/p):Infinity;
-    var vd=$('#cVerdict');
-    if(hosted>self) vd.innerHTML='At '+s+' people, self-hosting is <strong>'+usd(hosted-self)+' a year cheaper</strong>. It becomes the cheaper option above roughly <strong>'+be+' people</strong> at these prices.';
-    else if(hosted<self) vd.innerHTML='At '+s+' people, a hosted service is <strong>'+usd(self-hosted)+' a year cheaper</strong>. Self-hosting starts to win above roughly <strong>'+be+' people</strong> at these prices.';
-    else vd.innerHTML='At these numbers the two options cost the same.';
-  }
-  [seats,price,srv,ops].forEach(function(r){r.addEventListener('input',calc)});
-  calc();
-}
-
 /* ───────────────────────── copy buttons ───────────────────────── */
 function initCopy(){
   $$('.code .copy').forEach(function(b){
@@ -1425,7 +1373,6 @@ function initCopy(){
 
 /* ───────────────────────── boot ───────────────────────── */
 safe(initUseCases,'use cases');
-safe(initCalc,'calc');
 safe(initCopy,'copy');
 safe(initTilt,'tilt');
 safe(initAnatomy,'anatomy');
