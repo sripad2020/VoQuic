@@ -1,5 +1,7 @@
 # VoQuic
 
+
+url: https://vo-quic.vercel.app/
 **Real-time voice over QUIC unreliable datagrams.** A FastAPI signalling server, a header-only media relay, and a browser client that frames microphone audio itself — built to prove that conversational latency stays flat under packet loss when the transport stops guaranteeing order.
 
 Internally the running system identifies itself as **Pulse Relay**; `VoQuic` is the repository name. The two refer to the same thing.
